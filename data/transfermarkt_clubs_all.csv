@@ -1,0 +1,57 @@
+club,competition,current_value_eur,previous_value_eur,value_change_pct,squad_avg_age,absolute_change,log_current_value,club_norm
+Alemannia Aachen,L3,4630000.0,5180000.0,11.9,,-550000.0,15.3481,alemanniaaachen
+Arminia Bielefeld,L2,11100000.0,13130000.0,18.2,,-2030000.0,16.2225,arminiabielefeld
+FC Augsburg,L1,124230000.0,127830000.0,2.9,,-3600000.0,18.6376,augsburg
+Bayer 04 Leverkusen,L1,409050000.0,439750000.0,7.5,,-30700000.0,19.8293,bayerleverkusen
+Bayern Munich,L1,936000000.0,857500000.0,-8.4,,78500000.0,20.6571,bayernmunich
+VfL Bochum,L2,35300000.0,33500000.0,-5.1,,1800000.0,17.3794,bochum
+Borussia Dortmund,L1,402100000.0,418100000.0,4.0,,-16000000.0,19.8122,borussiadortmund
+Borussia Mönchengladbach,L1,159850000.0,153850000.0,-3.8,,6000000.0,18.8897,borussiamonchengladbach
+SV Darmstadt 98,L2,29400000.0,25200000.0,-14.3,,4200000.0,17.1965,darmstadt98
+Eintracht Braunschweig,L2,17350000.0,17850000.0,2.9,,-500000.0,16.6691,eintrachtbraunschweig
+Eintracht Frankfurt,L1,334400000.0,336400000.0,0.6,,-2000000.0,19.6278,eintrachtfrankfurt
+SV 07 Elversberg,L2,18480000.0,18480000.0,,,0.0,16.7322,elversberg
+FC Energie Cottbus,L3,5330000.0,5450000.0,2.3,,-120000.0,15.4889,energiecottbus
+FC Erzgebirge Aue,L3,5550000.0,5480000.0,-1.4,,70000.0,15.5293,erzgebirgeaue
+Fortuna Düsseldorf,L2,29400000.0,30650000.0,4.3,,-1250000.0,17.1965,fortunadusseldorf
+SC Freiburg,L1,197500000.0,167700000.0,-15.1,,29800000.0,19.1012,freiburg
+1.FSV Mainz 05,L1,138580000.0,138580000.0,,,0.0,18.747,fsvmainz
+Hamburger SV,L1,64250000.0,68350000.0,6.4,,-4100000.0,17.9783,hamburger
+Hannover 96,L2,33000000.0,30500000.0,-7.6,,2500000.0,17.312,hannover
+FC Hansa Rostock,L3,9050000.0,9400000.0,3.9,,-350000.0,16.0183,hansarostock
+1.FC Heidenheim 1846,L1,57400000.0,58900000.0,2.6,,-1500000.0,17.8656,heidenheim
+Hertha BSC,L2,38680000.0,41980000.0,8.5,,-3300000.0,17.4708,hertha
+TSG 1899 Hoffenheim,L1,156850000.0,159850000.0,1.9,,-3000000.0,18.8708,hoffenheim
+TSG 1899 Hoffenheim II,L3,4650000.0,4900000.0,5.4,,-250000.0,15.3524,hoffenheimii
+Holstein Kiel,L2,40580000.0,36330000.0,-10.5,,4250000.0,17.5188,holsteinkiel
+FC Ingolstadt 04,L3,7100000.0,7100000.0,,,0.0,15.7756,ingolstadt
+SSV Jahn Regensburg,L3,8279999.999999999,8800000.0,6.3,,-520000.00000000093,15.9294,jahnregensburg
+1.FC Kaiserslautern,L2,22530000.0,26330000.0,16.9,,-3800000.0,16.9304,kaiserslautern
+Karlsruher SC,L2,20280000.0,21680000.0,6.9,,-1400000.0,16.8251,karlsruher
+1.FC Köln,L1,71680000.0,77180000.0,7.7,,-5500000.0,18.0877,koln
+1.FC Magdeburg,L2,23330000.0,23880000.0,2.4,,-550000.0,16.9653,magdeburg
+MSV Duisburg,L3,5300000.0,5400000.0,1.9,,-100000.0,15.4832,msvduisburg
+1.FC Nuremberg,L2,25750000.0,30550000.0,18.6,,-4800000.0,17.0639,nuremberg
+VfL Osnabrück,L3,5950000.0,6230000.0,4.6,,-280000.0,15.5989,osnabruck
+SC Paderborn 07,L2,26600000.0,27300000.0,2.6,,-700000.0,17.0964,paderborn
+Preußen Münster,L2,14430000.0,15180000.0,5.2,,-750000.0,16.4848,preuenmunster
+RB Leipzig,L1,557000000.0,492750000.0,-11.5,,64250000.0,20.1381,rbleipzig
+Rot-Weiss Essen,L3,7100000.0,7100000.0,,,0.0,15.7756,rotweissessen
+1.FC Saarbrücken,L3,8430000.0,8430000.0,,,0.0,15.9473,saarbrucken
+FC Schalke 04,L2,34000000.0,30100000.0,-11.5,,3900000.0,17.3419,schalke
+1.FC Schweinfurt 05,L3,3700000.0,3650000.0,-1.4,,50000.0,15.1238,schweinfurt
+SG Dynamo Dresden,L2,10430000.0,10280000.0,-1.4,,150000.0,16.1602,sgdynamodresden
+SpVgg Greuther Fürth,L2,18930000.0,18930000.0,,,0.0,16.7563,spvgggreutherfurth
+FC St. Pauli,L1,48150000.0,52150000.0,8.3,,-4000000.0,17.6898,stpauli
+VfB Stuttgart,L1,333130000.0,307630000.0,-7.7,,25500000.0,19.624,stuttgart
+VfB Stuttgart II,L3,6430000.0,8930000.0,38.9,,-2500000.0,15.6765,stuttgartii
+TSV 1860 Munich,L3,8550000.0,8199999.999999999,-4.1,,350000.00000000093,15.9614,tsv1860munich
+TSV Havelse,L3,2430000.0,2560000.0,5.1,,-130000.0,14.7034,tsvhavelse
+SSV Ulm 1846,L3,6880000.0,7400000.0,7.6,,-520000.0,15.7441,ulm
+1.FC Union Berlin,L1,122150000.0,124400000.0,1.8,,-2250000.0,18.6208,unionberlin
+SC Verl,L3,5230000.0,5230000.0,,,0.0,15.4699,verl
+FC Viktoria Köln,L3,4530000.0,4880000.0,7.7,,-350000.0,15.3262,viktoriakoln
+SV Waldhof Mannheim,L3,5700000.0,5680000.0,-0.4,,20000.0,15.556,waldhofmannheim
+SV Wehen Wiesbaden,L3,7650000.0,8380000.000000001,9.5,,-730000.0000000009,15.8502,wehenwiesbaden
+SV Werder Bremen,L1,133800000.00000001,143000000.0,6.9,,-9199999.999999985,18.7119,werderbremen
+VfL Wolfsburg,L1,276400000.0,264399999.99999997,-4.3,,12000000.00000003,19.4374,wolfsburg

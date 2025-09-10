@@ -1,0 +1,19 @@
+club,current_value_eur,previous_value_eur,value_change_pct,squad_avg_age,league,absolute_change,log_current_value
+Bayern Munich,936000000.0,857500000.0,-8.4,,Bundesliga,78500000.0,20.66
+RB Leipzig,557000000.0,492750000.0,-11.5,,Bundesliga,64250000.0,20.14
+Bayer 04 Leverkusen,409050000.0,439750000.0,7.5,,Bundesliga,-30700000.0,19.83
+Borussia Dortmund,402100000.0,410100000.0,2.0,,Bundesliga,-8000000.0,19.81
+Eintracht Frankfurt,334400000.0,336400000.0,0.6,,Bundesliga,-2000000.0,19.63
+VfB Stuttgart,333130000.0,307630000.0,-7.7,,Bundesliga,25500000.0,19.62
+VfL Wolfsburg,276400000.0,257399999.99999997,-6.9,,Bundesliga,19000000.00000003,19.44
+TSG 1899 Hoffenheim,156850000.0,171850000.0,9.6,,Bundesliga,-15000000.0,18.87
+SC Freiburg,197500000.0,167700000.0,-15.1,,Bundesliga,29800000.0,19.1
+Borussia Mönchengladbach,159850000.0,153850000.0,-3.8,,Bundesliga,6000000.0,18.89
+SV Werder Bremen,133800000.00000001,140800000.0,5.2,,Bundesliga,-6999999.999999985,18.71
+1.FSV Mainz 05,138580000.0,138580000.0,,,Bundesliga,0.0,18.75
+FC Augsburg,124230000.0,127830000.0,2.9,,Bundesliga,-3600000.0,18.64
+1.FC Union Berlin,122150000.0,124400000.0,1.8,,Bundesliga,-2250000.0,18.62
+1.FC Köln,71680000.0,78680000.0,9.8,,Bundesliga,-7000000.0,18.09
+Hamburger SV,64250000.0,68350000.0,6.4,,Bundesliga,-4100000.0,17.98
+1.FC Heidenheim 1846,57400000.0,57400000.0,,,Bundesliga,0.0,17.87
+FC St. Pauli,48150000.0,48150000.0,,,Bundesliga,0.0,17.69
