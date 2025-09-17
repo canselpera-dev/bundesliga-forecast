@@ -71,13 +71,13 @@ teams_urls = {
     "1. fsv mainz 05": "https://www.transfermarkt.com/1-fsv-mainz-05/startseite/verein/39",
     
     # Holstein Kiel
-    "holstein kiel": "https://www.transfermarkt.com/holstein-kiel/startseite/verein/1121",
+    "holstein kiel": "https://www.transfermarkt.com/holstein-kiel/startseite/verein/269",
     
     # FC St. Pauli
-    "fc st. pauli": "https://www.transfermarkt.com/fc-st-pauli/startseite/verein/560",
+    "fc st. pauli": "https://www.transfermarkt.com/fc-st-pauli/startseite/verein/35",
     
     # Hamburger SV
-    "hamburger sv": "https://www.transfermarkt.com/hamburger-sv/startseite/verein/3"
+    "hamburger sv": "https://www.transfermarkt.com/hamburger-sv/startseite/verein/41"
 }
 
 

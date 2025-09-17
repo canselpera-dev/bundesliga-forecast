@@ -406,12 +406,29 @@ if "away_subs" not in st.session_state:
     st.session_state.away_subs = []
 
 # ---------- STEP 1: Takım seçimi ----------
-st.header("1️⃣ Takım Seçimi")
+# Dropdown’da orijinal isimleri gösterelim
+teams_display = list(norm_map.values())
+
 col1, col2 = st.columns(2)
 with col1:
-    home_team = st.selectbox("🏠 Ev Sahibi Takım", teams, index=teams.index("Bayern Munich") if "Bayern Munich" in teams else 0, key="home_team")
+    home_team_display = st.selectbox(
+        "🏠 Ev Sahibi Takım",
+        teams_display,
+        index=teams_display.index("Bayern Munich") if "Bayern Munich" in teams_display else 0,
+        key="home_team"
+    )
 with col2:
-    away_team = st.selectbox("✈️ Deplasman Takımı", teams, index=teams.index("Borussia Dortmund") if "Borussia Dortmund" in teams else 1, key="away_team")
+    away_team_display = st.selectbox(
+        "✈️ Deplasman Takımı",
+        teams_display,
+        index=teams_display.index("Borussia Dortmund") if "Borussia Dortmund" in teams_display else 1,
+        key="away_team"
+    )
+
+# Arka planda normalize edilmiş karşılıklarını kullan
+home_team = norm_map[normalize_name(home_team_display)]
+away_team = norm_map[normalize_name(away_team_display)]
+
 
 if st.button("✅ Kadroları Göster"):
     st.session_state.show_squads = True
