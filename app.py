@@ -581,7 +581,9 @@ st.markdown(hide_sidebar, unsafe_allow_html=True)
 st.header("1️⃣ Takım Seçimi")
 
 # Takım dropdown'ları
-teams_display = list(norm_map.values())
+# Bochum ve Holstein Kiel'i hariç tut
+exclude_norm = [normalize_name("Bochum"), normalize_name("Holstein Kiel")]
+teams_display = [t for t in norm_map.values() if normalize_name(t) not in exclude_norm]
 
 col1, col2 = st.columns(2)
 with col1:
@@ -598,6 +600,7 @@ with col2:
         index=teams_display.index("Borussia Dortmund") if "Borussia Dortmund" in teams_display else 1,
         key="away_team"
     )
+
 
 # Normalize edilmiş takım isimlerini al
 home_team = norm_map.get(normalize_name(home_team_display), home_team_display)
