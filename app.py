@@ -385,22 +385,25 @@ def build_feature_row(
 
     # Temel özellikleri oluştur
     row = {
-        'Home_AvgRating': safe_float(h_team_rating, 65.0),
-        'Away_AvgRating': safe_float(a_team_rating, 65.0),
-        'home_form': safe_float(home_form['form'], 0.5),
-        'away_form': safe_float(away_form['form'], 0.5),
-        'home_current_value_eur': safe_float(hv_feats.get('current_value_eur', 0.0), 0.0),
-        'away_current_value_eur': safe_float(av_feats.get('current_value_eur', 0.0), 0.0),
-        'home_squad_avg_age': safe_float(hv_feats.get('squad_avg_age', 0.0), 0.0),
-        'away_squad_avg_age': safe_float(av_feats.get('squad_avg_age', 0.0), 0.0),
-        'home_goals': safe_float(home_form['gs_5'], 0),
-        'away_goals': safe_float(away_form['gs_5'], 0),
-        'IsDerby': int(derby_flag(home_team, away_team)),
-        
-        # Ek form özellikleri
-        'home_last5_form_points': safe_float(home_form['gs_5'] - home_form['gc_5'] + 5, 5),
-        'away_last5_form_points': safe_float(away_form['gs_5'] - away_form['gc_5'] + 5, 5),
+    'Home_AvgRating': safe_float(h_team_rating, 65.0),
+    'Away_AvgRating': safe_float(a_team_rating, 65.0),
+    'home_form': safe_float(home_form['form'], 0.5),
+    'away_form': safe_float(away_form['form'], 0.5),
+    'home_current_value_eur': safe_float(hv_feats.get('current_value_eur', 0.0), 0.0),
+    'away_current_value_eur': safe_float(av_feats.get('current_value_eur', 0.0), 0.0),
+    'home_squad_avg_age': safe_float(hv_feats.get('squad_avg_age', 0.0), 0.0),
+    'away_squad_avg_age': safe_float(av_feats.get('squad_avg_age', 0.0), 0.0),
+    'home_goals': safe_float(home_form['gs_5'], 0),
+    'away_goals': safe_float(away_form['gs_5'], 0),
+    'homeTeam_Momentum': safe_float(home_form['momentum'], 0),
+    'awayTeam_Momentum': safe_float(away_form['momentum'], 0),
+    'IsDerby': int(derby_flag(home_team, away_team)),
+
+    # Ek form özellikleri
+    'home_last5_form_points': safe_float(home_form['gs_5'] - home_form['gc_5'] + 5, 5),
+    'away_last5_form_points': safe_float(away_form['gs_5'] - away_form['gc_5'] + 5, 5),
     }
+
     
     # Enhanced feature engineering uygula
     row = enhanced_feature_engineering(row)
