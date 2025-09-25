@@ -11,8 +11,10 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 FBREF_SEASONS = {
     "2023-24": "https://fbref.com/en/comps/20/2023-2024/stats/2023-2024-Bundesliga-Stats",
     "2024-25": "https://fbref.com/en/comps/20/2024-2025/stats/2024-2025-Bundesliga-Stats",
+    "2025-26": "https://fbref.com/en/comps/20/2025-2026/stats/2025-2026-Bundesliga-Stats",         # eklendi
     "2023-24-2BL": "https://fbref.com/en/comps/33/2023-2024/stats/2023-2024-2-Bundesliga-Stats",
     "2024-25-2BL": "https://fbref.com/en/comps/33/2024-2025/stats/2024-2025-2-Bundesliga-Stats",
+    "2025-26-2BL": "https://fbref.com/en/comps/33/2025-2026/stats/2025-2026-2-Bundesliga-Stats",     # eklendi
 }
 
 # Bundesliga 2’den sadece bu takımlar

@@ -1,0 +1,5 @@
+model_type: LightGBM Overfitting Prevention
+features_used: 15
+total_features: 43
+training_date: 2025-09-23 02:36:10
+max_features_limit: 15
