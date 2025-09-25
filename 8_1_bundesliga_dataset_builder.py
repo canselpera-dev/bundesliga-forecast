@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-8_6_bundesliga_dataset_builder_debug.py
-Bundesliga dataset builder (FBref + Transfermarkt + Football-Data API).
-FBref kolon debug eklendi.
+8_5_bundesliga_dataset_builder_final.py
+Robust ve UTF-8 uyumlu Bundesliga dataset builder.
+FBref, Transfermarkt, Football-Data API verilerini tek datasette toplar.
 """
 
 import pandas as pd
@@ -22,42 +22,28 @@ def get_fbref_team_stats():
     table = soup.find("table", {"id": "stats_squads_standard_for"})
     df = pd.read_html(str(table))[0]
 
-    # Çoklu index varsa üst seviyeyi düşür
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.droplevel(0)
 
-    # 🔎 Debug: ham kolon isimlerini yazdıralım
-    print("🔎 FBref ham kolonları:", df.columns.tolist())
-
-    # Kolon isimlerini düzenle
+    # Dinamik sütun eşleme
     cols_map = {}
     for col in df.columns:
-        col_clean = col.strip()
-        if "Squad" in col_clean:
+        if "Squad" in col:
             cols_map[col] = "Team"
-        elif col_clean in ["Sh", "Shots"]:
+        elif "Sh" in col:
             cols_map[col] = "Shots"
-        elif col_clean in ["SoT", "SOT"]:
+        elif "SoT" in col:
             cols_map[col] = "ShotsOnTarget"
-        elif col_clean in ["Gls", "Goals"]:
+        elif "Gls" in col:
             cols_map[col] = "Goals"
-        elif col_clean == "xG":
+        elif "xG" in col:
             cols_map[col] = "xG"
-        elif col_clean == "xGA":
+        elif "xGA" in col:
             cols_map[col] = "xGA"
 
     df = df.rename(columns=cols_map)
-
-    # Yalnızca gerekli kolonları seç
     available_cols = [c for c in ["Team", "Shots", "ShotsOnTarget", "Goals", "xG", "xGA"] if c in df.columns]
     df = df[available_cols]
-
-    # Tekrarlayan kolon isimlerini düşür
-    df = df.loc[:, ~df.columns.duplicated()]
-
-    # 🔎 Debug: seçilen kolonları da yazdıralım
-    print("✅ FBref seçilen kolonlar:", df.columns.tolist())
-
     return df
 
 # ==============================
@@ -73,6 +59,7 @@ def get_transfermarkt_injuries():
 
     print("🔎 Transfermarkt kolonları:", df.columns.tolist())
 
+    # Dinamik kolon seçimi
     club_col = next((c for c in df.columns if "Club" in str(c)), None)
     player_col = next((c for c in df.columns if "Player" in str(c) or "Name" in str(c) or "Player/Position" in str(c)), None)
 
@@ -92,7 +79,7 @@ def get_team_form(api_token):
     print("📈 Football-Data API'den form verisi çekiliyor...")
     url = "https://api.football-data.org/v4/competitions/BL1/matches"
     headers = {
-        "X-Auth-Token": api_token,
+        "X-Auth-Token": api_token,  # ASCII karakterlerden oluşmalı
         "Content-Type": "application/json; charset=utf-8"
     }
     try:
@@ -139,16 +126,13 @@ def build_final_dataset(api_token):
     df = fbref.merge(injuries, on="Team", how="left")
     df = df.merge(form, on="Team", how="left")
     df = df.fillna(0)
-
-    # Tekrar kontrolü
-    df = df.loc[:, ~df.columns.duplicated()]
     return df
 
 # ==============================
 # Main
 # ==============================
 if __name__ == "__main__":
-    API_TOKEN = "745aa92502704e82902bdd4cd5df40e4"
+    API_TOKEN = "BURAYA_ASCII_TOKENİNİ_YAZ"  # Token Türkçe karakter içermemeli!
     try:
         dataset = build_final_dataset(API_TOKEN)
         dataset.to_excel("data/bundesliga_final_dataset.xlsx", index=False)
