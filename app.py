@@ -582,7 +582,7 @@ st.header("1️⃣ Takım Seçimi")
 
 # Takım dropdown'ları
 # Bochum ve Holstein Kiel'i hariç tut
-exclude_norm = [normalize_name("Bochum"), normalize_name("Holstein Kiel")]
+exclude_norm = [normalize_name("vfl bochum"), normalize_name("Holstein Kiel")]
 teams_display = [t for t in norm_map.values() if normalize_name(t) not in exclude_norm]
 
 col1, col2 = st.columns(2)
