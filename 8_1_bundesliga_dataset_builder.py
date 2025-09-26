@@ -132,7 +132,7 @@ def build_final_dataset(api_token):
 # Main
 # ==============================
 if __name__ == "__main__":
-    API_TOKEN = "BURAYA_ASCII_TOKENİNİ_YAZ"  # Token Türkçe karakter içermemeli!
+    API_TOKEN = "745aa92502704e82902bdd4cd5df40e4"  # Token Türkçe karakter içermemeli!
     try:
         dataset = build_final_dataset(API_TOKEN)
         dataset.to_excel("data/bundesliga_final_dataset.xlsx", index=False)
