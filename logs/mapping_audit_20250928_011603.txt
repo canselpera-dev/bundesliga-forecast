@@ -1,29 +1,28 @@
 === Bundesliga Mapping & Merge Report ===
-Timestamp: 20250908_000922
+Timestamp: 20250928_011603
 
 [Summary]
 - Fuzzy library used: rapidfuzz
 - Squads unique teams: 20
 - FBref unique teams: 22
 - Exact team matches: 3
-- Mapped teams (after manual+fuzzy): 18
-- Unmatched squads teams: 2
-- Unmatched fbref teams: 4
-- Total players (squads rows): 567
-- Matched players: 273 (48.15 %)
+- Mapped teams (after manual+fuzzy): 20
+- Unmatched squads teams: 0
+- Unmatched fbref teams: 2
+- Total players (squads rows): 579
+- Matched players: 475 (82.04 %)
 
 [Player Matching Details]
-- Matched players: 273
-- Needs manual review: 7
-- Unmatched players: 234
+- Matched players: 475
+- Needs manual review: 15
+- Unmatched players: 89
 - Match methods:
-  * exact_match: 259
-  * fuzzy_partial_ratio: 225
-  * fuzzy_ratio: 13
-  * fuzzy_token_sort_ratio: 8
-  * fuzzy_token_set_ratio: 6
-  * manual_mapping: 2
-  * surname_match: 1
+  * exact_match: 389
+  * fuzzy_partial_ratio: 101
+  * manual_mapping: 63
+  * fuzzy_ratio: 14
+  * fuzzy_token_set_ratio: 7
+  * fuzzy_token_sort_ratio: 5
 
 [Files written]
 - Matched teams: logs\matched_teams.csv

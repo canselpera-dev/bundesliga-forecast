@@ -1,5 +1,0 @@
-2025-08-29 23:41:34,303 - INFO - FUZZY MATCH (93%) \u2192 Jakub Kami\u0144ski \u2248 Jakub Kaminski
-2025-08-29 23:41:34,436 - INFO - 
-\U0001f4ca Toplam oyuncu: 1129
-\u2705 Eþleþen oyuncular: 1
-\U0001f3af Baþarý oraný: 0.09%
