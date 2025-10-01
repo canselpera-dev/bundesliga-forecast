@@ -15,11 +15,11 @@ Joshua Kimmich,joshua kimmich,Joshua Kimmich,joshua kimmich,100.0,manual_mapping
 Tom Bischof,tom bischof,Tom Bischof,tom bischof,100.0,exact_match,matched
 Leon Goretzka,leon goretzka,Leon Goretzka,leon goretzka,100.0,manual_mapping,matched
 Jamal Musiala,jamal musiala,Jamal Musiala,jamal musiala,100.0,manual_mapping,matched
-Lennart Karl,lennart karl,Lennart Karl,lennart karl,100.0,exact_match,matched
 Luis Díaz,luis diaz,Luis Díaz,luis diaz,100.0,exact_match,matched
 Serge Gnabry,serge gnabry,Serge Gnabry,serge gnabry,100.0,manual_mapping,matched
 Wisdom Mike,wisdom mike,Wisdom Mike,wisdom mike,100.0,exact_match,matched
 Michael Olise,michael olise,Michael Olise,michael olise,100.0,exact_match,matched
+Lennart Karl,lennart karl,Lennart Karl,lennart karl,100.0,exact_match,matched
 Harry Kane,harry kane,Harry Kane,harry kane,100.0,exact_match,matched
 Nicolas Jackson,nicolas jackson,Nicolas Jackson,nicolas jackson,100.0,exact_match,matched
 Mark Flekken,mark flekken,Mark Flekken,mark flekken,100.0,exact_match,matched
@@ -69,6 +69,7 @@ Karim Adeyemi,karim adeyemi,Karim Adeyemi,karim adeyemi,100.0,manual_mapping,mat
 Cole Campbell,cole campbell,Cole Campbell,cole campbell,100.0,exact_match,matched
 Serhou Guirassy,serhou guirassy,Serhou Guirassy,serhou guirassy,100.0,exact_match,matched
 Maximilian Beier,maximilian beier,Maximilian Beier,maximilian beier,100.0,exact_match,matched
+Fábio Silva,fabio silva,Fábio Silva,fabio silva,100.0,exact_match,matched
 Maarten Vandevoordt,maarten vandevoordt,Maarten Vandevoordt,maarten vandevoordt,100.0,exact_match,matched
 Péter Gulácsi,peter gulacsi,Péter Gulácsi,peter gulacsi,100.0,manual_mapping,matched
 Castello Lukeba,castello lukeba,Castello Lukeba,castello lukeba,100.0,exact_match,matched
@@ -85,6 +86,7 @@ Ezechiel Banzuzi,ezechiel banzuzi,Ezechiel Banzuzi,ezechiel banzuzi,100.0,exact_
 Xaver Schlager,xaver schlager,Xaver Schlager,xaver schlager,100.0,exact_match,matched
 Assan Ouédraogo,assan ouedraogo,Assan Ouedraogo,assan ouedraogo,100.0,exact_match,matched
 Kevin Kampl,kevin kampl,Kevin Kampl,kevin kampl,100.0,manual_mapping,matched
+Andrija Maksimovic,andrija maksimovic,Andrija Maksimović,andrija maksimovic,100.0,exact_match,matched
 Christoph Baumgartner,christoph baumgartner,Christoph Baumgartner,christoph baumgartner,100.0,manual_mapping,matched
 Viggo Gebel,viggo gebel,Viggo Gebel,viggo gebel,100.0,exact_match,matched
 Antonio Nusa,antonio nusa,Antonio Nusa,antonio nusa,100.0,exact_match,matched
@@ -436,10 +438,10 @@ Noah Katterbach,noah katterbach,Noah Katterbach,noah katterbach,100.0,exact_matc
 Giorgi Gocholeishvili,giorgi gocholeishvili,Giorgi Gocholeishvili,giorgi gocholeishvili,100.0,exact_match,matched
 William Mikelbrencis,william mikelbrencis,William Mikelbrencis,william mikelbrencis,100.0,exact_match,matched
 Silvan Hefti,silvan hefti,Silvan Hefti,silvan hefti,100.0,exact_match,matched
+Nicolai Remberg,nicolai remberg,Nicolai Remberg,nicolai remberg,100.0,exact_match,matched
 Jonas Meffert,jonas meffert,Jonas Meffert,jonas meffert,100.0,exact_match,matched
 Albert Sambi Lokonga,albert sambi lokonga,Albert Sambi Lokonga,albert sambi lokonga,100.0,exact_match,matched
 Nicolás Capaldo,nicolas capaldo,Nicolás Capaldo,nicolas capaldo,100.0,exact_match,matched
-Nicolai Remberg,nicolai remberg,Nicolai Remberg,nicolai remberg,100.0,exact_match,matched
 Fábio Vieira,fabio vieira,Fabio Vieira,fabio vieira,100.0,exact_match,matched
 Immanuel Pherai,immanuel pherai,Immanuel Pherai,immanuel pherai,100.0,manual_mapping,matched
 Jean-Luc Dompé,jeanluc dompe,Jean-Luc Dompé,jeanluc dompe,100.0,exact_match,matched
@@ -459,11 +461,9 @@ Equi Fernández,equi fernandez,Ezequiél Fernández,ezequiel fernandez,87.5,fuzz
 Alejo Sarco,alejo sarco,,,66.67,fuzzy_partial_ratio,unmatched
 Patrick Drewes,patrick drewes,,,60.0,fuzzy_partial_ratio,unmatched
 Silas Ostrzinski,silas ostrzinski,,,60.0,fuzzy_partial_ratio,unmatched
-Fábio Silva,fabio silva,,,52.63,fuzzy_partial_ratio,unmatched
 Leopold Zingerle,leopold zingerle,,,48.28,fuzzy_partial_ratio,unmatched
 Max Finkgräfe,max finkgraefe,,,48.0,fuzzy_partial_ratio,unmatched
 Joyeux Masanka Bungi,joyeux masanka bungi,,,51.85,fuzzy_partial_ratio,unmatched
-Andrija Maksimovic,andrija maksimovic,,,66.67,fuzzy_partial_ratio,unmatched
 Florian Hellstern,florian hellstern,,,61.54,fuzzy_partial_ratio,unmatched
 Stefan Drljaca,stefan drljaca,,,57.14,fuzzy_token_set_ratio,unmatched
 Jeff Chabot,jeff chabot,,julian chabot,77.78,fuzzy_partial_ratio,manual_review
