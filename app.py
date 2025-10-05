@@ -491,7 +491,7 @@ def last5_report_pretty(df_form, team_candidate, norm_map, max_lines=5):
 
 # ================== STREAMLIT UYGULAMASI ==================
 st.set_page_config(page_title="Bundesliga Predictor - Geliştirilmiş", layout="wide")
-st.title("⚽ Bundesliga Tahmin Sistemi (Beta)")
+st.title("⚽ Bundesliga Tahmin Sistemi (Stable)")
 
 @st.cache_resource
 def load_data():
