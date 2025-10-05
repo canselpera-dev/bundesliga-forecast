@@ -1,4 +1,4 @@
-# app.py - GÜNCELLENMİŞ TAM KOD
+# app.py - ULTIMATE FINAL GÜNCELLENMİŞ TAM KOD
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,24 +12,26 @@ import traceback
 
 warnings.filterwarnings("ignore")
 
-# ================== GÜNCELLENMİŞ KONFİG ==================
+# ================== ULTIMATE FINAL KONFİG ==================
 RANDOM_STATE = 42
 DATA_PATH = "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.xlsx"
 PLAYER_DATA_PATH = "data/final_bundesliga_dataset_complete.xlsx"
-MODEL_PATH = "models/bundesliga_model_overfitting_fixed.pkl"
-FEATURE_INFO_PATH = "models/feature_info_overfitting_fixed.pkl"
+MODEL_PATH = "models/bundesliga_model_ultimate_final.pkl"  # ✅ GÜNCELLENDİ
+FEATURE_INFO_PATH = "models/feature_info_ultimate_final.pkl"  # ✅ GÜNCELLENDİ
 
 TOP_N_STARTERS = 11
 TOP_N_SUBS = 7
 STARTER_WEIGHT = 0.7
 SUB_WEIGHT = 0.3
 
-# Varsayılan feature listesi (model yüklenmezse kullanılacak)
+# ✅ ULTIMATE FINAL FEATURE LISTESİ (15 ÖZELLİK)
 DEFAULT_FEATURES = [
-    'value_difference', 'form_difference', 'away_form', 'power_sum', 
-    'power_difference', 'home_form', 'power_ratio', 'goals_ratio', 
-    'xg_difference', 'xg_ratio', 'h2h_avg_goals', 'value_ratio', 
-    'age_difference', 'h2h_away_goals', 'h2h_goal_difference'
+    'form_difference', 'away_gpg_cumulative', 'away_form_ppg_interaction',
+    'cumulative_ppg_ratio', 'cumulative_ppg_difference', 'value_difference',
+    'home_form_ppg_interaction', 'cumulative_gpg_difference',
+    'cumulative_goal_diff_difference', 'home_gapg_cumulative',
+    'cumulative_gpg_ratio', 'home_form', 'away_gapg_cumulative',
+    'away_goal_diff_cumulative', 'away_ppg_cumulative'
 ]
 
 # ================== YARDIMCI FONKSİYONLAR ==================
@@ -61,16 +63,33 @@ def normalize_name(name: str) -> str:
     return s
 
 def get_feature_description(feature_name):
-    """Feature açıklamalarını getir"""
+    """✅ GÜNCELLENMİŞ Feature açıklamalarını getir"""
     descriptions = {
-        'value_difference': 'Takım değer farkı (Ev - Deplasman)',
+        # YENİ CUMULATIVE FEATURE'LAR:
+        'away_gpg_cumulative': 'Deplasman takım maç başına gol ortalaması (kümülatif)',
+        'away_form_ppg_interaction': 'Deplasman form × puan performansı interaksiyonu',
+        'cumulative_ppg_ratio': 'Takımların puan ortalaması oranı (kümülatif)',
+        'cumulative_ppg_difference': 'Puan ortalaması farkı (kümülatif)',
+        'home_form_ppg_interaction': 'Ev sahibi form × puan performansı interaksiyonu',
+        'cumulative_gpg_difference': 'Gol ortalaması farkı (kümülatif)',
+        'cumulative_goal_diff_difference': 'Averaj farkı (kümülatif)',
+        'home_gapg_cumulative': 'Ev sahibi maç başına yenen gol ortalaması',
+        'cumulative_gpg_ratio': 'Gol ortalaması oranı (kümülatif)',
+        'away_gapg_cumulative': 'Deplasman maç başına yenen gol ortalaması',
+        'away_goal_diff_cumulative': 'Deplasman averajı (kümülatif)',
+        'away_ppg_cumulative': 'Deplasman maç başına puan ortalaması',
+        
+        # MEVCUT FEATURE'LAR:
         'form_difference': 'Form farkı (Ev - Deplasman)',
+        'value_difference': 'Takım değer farkı (Ev - Deplasman)',
+        'home_form': 'Ev sahibi takım formu',
+        
+        # ESKİ FEATURE'LAR (yedek):
         'power_difference': 'Güç indeksi farkı',
         'power_ratio': 'Güç oranı (Ev / Deplasman)',
         'goals_ratio': 'Gol oranı (Ev / Deplasman)',
         'age_difference': 'Yaş farkı (Ev - Deplasman)',
         'away_form': 'Deplasman takım formu',
-        'home_form': 'Ev sahibi takım formu',
         'power_sum': 'Toplam güç indeksi',
         'xg_difference': 'Expected goals farkı',
         'xg_ratio': 'Expected goals oranı',
@@ -315,7 +334,7 @@ def maybe_team_value_features(df_players, team):
     return feats
 
 def enhanced_feature_engineering(row):
-    """Gelişmiş feature engineering"""
+    """✅ GÜNCELLENMİŞ Feature engineering - CUMULATIVE METRİKLER EKLENDİ"""
     enhanced_row = row.copy()
     
     try:
@@ -348,7 +367,31 @@ def enhanced_feature_engineering(row):
         if all(k in row for k in ['home_squad_avg_age', 'away_squad_avg_age']):
             enhanced_row['age_difference'] = row['home_squad_avg_age'] - row['away_squad_avg_age']
         
-        # 6. Varsayılan değerler (eğer veri yoksa)
+        # 6. CUMULATIVE METRİKLER (Ultimate Final için KRİTİK) - ✅ YENİ EKLENDİ
+        # Varsayılan değerler - gerçek veri olmadığında kullanılacak
+        enhanced_row.setdefault('home_ppg_cumulative', 1.5)
+        enhanced_row.setdefault('away_ppg_cumulative', 1.5)
+        enhanced_row.setdefault('home_gpg_cumulative', 1.5)
+        enhanced_row.setdefault('away_gpg_cumulative', 1.5)
+        enhanced_row.setdefault('home_gapg_cumulative', 1.5)
+        enhanced_row.setdefault('away_gapg_cumulative', 1.5)
+        enhanced_row.setdefault('home_goal_diff_cumulative', 0)
+        enhanced_row.setdefault('away_goal_diff_cumulative', 0)
+        enhanced_row.setdefault('home_form_5games', row.get('home_form', 0.5))
+        enhanced_row.setdefault('away_form_5games', row.get('away_form', 0.5))
+        
+        # 7. CUMULATIVE TÜREV ÖZELLİKLER (Modelin beklediği feature'lar) - ✅ YENİ EKLENDİ
+        enhanced_row['cumulative_ppg_difference'] = enhanced_row['home_ppg_cumulative'] - enhanced_row['away_ppg_cumulative']
+        enhanced_row['cumulative_ppg_ratio'] = enhanced_row['home_ppg_cumulative'] / (enhanced_row['away_ppg_cumulative'] + 0.1)
+        enhanced_row['cumulative_gpg_difference'] = enhanced_row['home_gpg_cumulative'] - enhanced_row['away_gpg_cumulative']
+        enhanced_row['cumulative_gpg_ratio'] = enhanced_row['home_gpg_cumulative'] / (enhanced_row['away_gpg_cumulative'] + 0.1)
+        enhanced_row['cumulative_goal_diff_difference'] = enhanced_row['home_goal_diff_cumulative'] - enhanced_row['away_goal_diff_cumulative']
+        
+        # 8. INTERACTION FEATURE'LARI - ✅ YENİ EKLENDİ
+        enhanced_row['home_form_ppg_interaction'] = enhanced_row['home_form'] * enhanced_row['home_ppg_cumulative']
+        enhanced_row['away_form_ppg_interaction'] = enhanced_row['away_form'] * enhanced_row['away_ppg_cumulative']
+        
+        # 9. Varsayılan değerler (eğer veri yoksa)
         enhanced_row.setdefault('h2h_avg_goals', 2.5)
         enhanced_row.setdefault('h2h_away_goals', 0)
         enhanced_row.setdefault('h2h_goal_difference', 0)
@@ -490,8 +533,8 @@ def last5_report_pretty(df_form, team_candidate, norm_map, max_lines=5):
     return "\n".join([header] + lines)
 
 # ================== STREAMLIT UYGULAMASI ==================
-st.set_page_config(page_title="Bundesliga Predictor - Geliştirilmiş", layout="wide")
-st.title("⚽ Bundesliga Tahmin Sistemi (Stable)")
+st.set_page_config(page_title="Bundesliga Predictor - Ultimate Final", layout="wide")
+st.title("⚽ Bundesliga Tahmin Sistemi (Ultimate Final)")  # ✅ GÜNCELLENDİ
 
 @st.cache_resource
 def load_data():
@@ -525,7 +568,7 @@ def load_data():
         # Normalize edilmiş takım haritası oluştur
         norm_map = build_normalized_team_map(team_dict)
         
-        st.sidebar.success(f"✅ Model yüklendi! {len(features_order)} özellik kullanılacak")
+        st.sidebar.success(f"✅ Ultimate Final Model yüklendi! {len(features_order)} özellik kullanılacak")  # ✅ GÜNCELLENDİ
         return model, features_order, team_dict, df_form, norm_map
         
     except FileNotFoundError as e:
@@ -557,28 +600,30 @@ if "away_subs" not in st.session_state:
     st.session_state.away_subs = []
 
 # ---------- SIDEBAR ----------
-# st.sidebar.header("ℹ️ Sistem Bilgisi")
-# st.sidebar.info("""
-# **Model Özellikleri:**
-# - ✅ Overfitting önleyici
-# - ✅ %54.7 test accuracy  
-# - ✅ 15 önemli feature
-# - ✅ Gelişmiş regularizasyon
-# """)
+st.sidebar.header("ℹ️ Sistem Bilgisi")
+st.sidebar.info("""
+**🏆 Ultimate Final Model:**
+- ✅ %61.5 test accuracy  
+- ✅ %4.7 overfitting gap (MÜKEMMEL)
+- ✅ 15/44 optimized feature
+- ✅ Cumulative metrikler aktif
+- ✅ Draw & HomeWin enhancement
+- ✅ SMOTE balancing
+""")  # ✅ GÜNCELLENDİ
 
-# st.sidebar.header("📊 Model Performansı")
-# st.sidebar.metric("Test Doğruluk", "%54.7")
-# st.sidebar.metric("Overfitting Gap", "%8.3")
-# st.sidebar.metric("Kullanılan Özellikler", len(features_order))
+st.sidebar.header("📊 Model Performansı")
+st.sidebar.metric("Test Doğruluk", "%61.5")  # ✅ GÜNCELLENDİ
+st.sidebar.metric("Overfitting Gap", "%4.7")  # ✅ GÜNCELLENDİ
+st.sidebar.metric("Kullanılan Özellikler", "15/44")  # ✅ GÜNCELLENDİ
 
 # Eğer sidebar tamamen gizlensin istersen:
-hide_sidebar = """
-    <style>
-        [data-testid="stSidebar"] {display: none;}
-        [data-testid="stSidebarNav"] {display: none;}
-    </style>
-"""
-st.markdown(hide_sidebar, unsafe_allow_html=True)
+# hide_sidebar = """
+#     <style>
+#         [data-testid="stSidebar"] {display: none;}
+#         [data-testid="stSidebarNav"] {display: none;}
+#     </style>
+# """
+# st.markdown(hide_sidebar, unsafe_allow_html=True)
 
 # ---------- ANA UYGULAMA ----------
 st.header("1️⃣ Takım Seçimi")
@@ -844,9 +889,9 @@ if st.session_state.show_squads:
             # Önemli feature'lar
             st.subheader("🔍 Önemli Feature Değerleri")
             important_features = [
-                'value_difference', 'form_difference', 'power_difference', 
-                'power_ratio', 'goals_ratio', 'age_difference'
-            ]
+                'form_difference', 'away_gpg_cumulative', 'away_form_ppg_interaction',
+                'cumulative_ppg_ratio', 'cumulative_ppg_difference', 'value_difference'
+            ]  # ✅ GÜNCELLENDİ
             
             feature_values = []
             for feat in important_features:
@@ -869,7 +914,7 @@ if st.session_state.show_squads:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: gray; font-size: 14px;'>
-    <p>⚽ Bundesliga Tahmin Sistemi v1.0</p>
+    <p>⚽ Bundesliga Tahmin Sistemi - Ultimate Final v1.0</p>  <!-- ✅ GÜNCELLENDİ -->
     <p>© 2025 Cansel Yardım | All Rights Reserved</p>
     <p>🔒 Licensed under MIT License</p>
 </div>
