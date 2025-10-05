@@ -1,0 +1,10 @@
+model_type: LightGBM Draw Focused
+features_used: 18
+total_features: 57
+draw_features_count: 3
+draw_features: ['draw_probability_score', 'draw_tendency_score', 'form_balance']
+training_date: 2025-10-04 22:29:02
+max_features_limit: 18
+standings_metrics_included: True
+draw_specific_features: True
+class_weights_adjusted: True

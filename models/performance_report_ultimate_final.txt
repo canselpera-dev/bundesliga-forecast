@@ -1,0 +1,9 @@
+model_type: LightGBM Ultimate Final
+features_used: 15
+total_features: 44
+training_date: 2025-10-05 18:50:01
+max_features_limit: 15
+cumulative_metrics_included: True
+draw_optimization: True
+homewin_recall_enhancement: True
+smote_balancing: True

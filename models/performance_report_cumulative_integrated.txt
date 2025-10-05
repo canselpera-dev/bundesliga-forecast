@@ -1,0 +1,6 @@
+model_type: LightGBM Cumulative Integrated
+features_used: 15
+total_features: 59
+training_date: 2025-10-05 12:33:31
+max_features_limit: 15
+cumulative_metrics_included: True

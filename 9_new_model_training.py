@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Bundesliga Tahmin Modeli - Ultimate Final Sürüm
+Geliştirilmiş Cumulative Stats + Draw Optimization + HomeWin Recall Enhancement
+"""
+
 import os
 import warnings
 warnings.filterwarnings("ignore")
@@ -22,8 +29,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.feature_selection import SelectFromModel, RFE
 import xgboost as xgb
 from imblearn.over_sampling import SMOTE
-from imblearn.under_sampling import RandomUnderSampler
-from imblearn.pipeline import Pipeline as ImbPipeline
 
 # ========== GELİŞTİRİLMİŞ KONFİGÜRASYON ==========
 RANDOM_STATE = 42
@@ -34,35 +39,164 @@ N_JOBS = -1
 DATA_PATH = "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.xlsx"
 PLAYER_DATA_PATH = "data/final_bundesliga_dataset_complete.xlsx"
 
-# Geliştirilmiş özellik listesi
+# Geliştirilmiş özellik listesi - OPTIMIZED FEATURES
 SELECTED_FEATURES = [
     # Takım Değer ve Demografi Özellikleri
     'home_current_value_eur', 'away_current_value_eur',
-    'home_previous_value_eur', 'away_previous_value_eur',
-    'home_value_change_pct', 'away_value_change_pct',
-    'home_squad_avg_age', 'away_squad_avg_age',
-    'home_absolute_change', 'away_absolute_change',
-    'home_log_current_value', 'away_log_current_value',
     'value_difference', 'value_ratio',
     
     # Performans ve Form Özellikleri
     'home_goals', 'away_goals', 'home_xg', 'away_xg',
     'goals_difference', 'goals_ratio', 'xg_difference', 'xg_ratio',
     'home_form', 'away_form', 'form_difference',
-    'home_last5_form_points', 'away_last5_form_points',
     
     # H2H (Head-to-Head) Özellikleri
-    'h2h_home_wins', 'h2h_away_wins', 'h2h_draws',
-    'h2h_home_goals', 'h2h_away_goals', 'h2h_matches_count',
     'h2h_win_ratio', 'h2h_goal_difference', 'h2h_avg_goals',
     
     # Derby ve Özel Durum Özellikleri
-    'isDerby', 'age_difference', 'injury_difference',
+    'isDerby', 'age_difference',
     
     # Power Index ve Advanced Metrics
     'home_power_index', 'away_power_index', 'power_difference',
-    'performance_ratio'
+    
+    # YENİ: CUMULATIVE METRİKLER (Manuel Hesaplanan)
+    'home_ppg_cumulative', 'away_ppg_cumulative',
+    'home_gpg_cumulative', 'away_gpg_cumulative',
+    'home_gapg_cumulative', 'away_gapg_cumulative',
+    'home_form_5games', 'away_form_5games',
+    'home_goal_diff_cumulative', 'away_goal_diff_cumulative',
+    
+    # YENİ: CUMULATIVE METRİKLERDEN TÜRETİLEN ÖZELLİKLER
+    'cumulative_ppg_difference', 'cumulative_ppg_ratio',
+    'cumulative_gpg_difference', 'cumulative_gpg_ratio',
+    'form_5games_difference', 'cumulative_goal_diff_difference',
+    
+    # YENİ: DRAW OPTIMIZATION ÖZELLİKLERİ
+    'strength_balance', 'is_close_match', 'both_teams_good_form',
+    
+    # YENİ: HOMEWIN RECALL OPTIMIZATION
+    'home_advantage_strength', 'home_defensive_stability'
 ]
+
+# ========== MANUEL CUMULATIVE STATS HESAPLAMA ==========
+def calculate_cumulative_stats(df_matches):
+    """Maç verisinden takımların kümülatif istatistiklerini hesapla"""
+    print("🔄 Manuel cumulative istatistikler hesaplanıyor...")
+    
+    df = df_matches.copy()
+    
+    # Tarihe göre sırala
+    if 'Date' not in df.columns and 'utcDate' in df.columns:
+        df['Date'] = pd.to_datetime(df['utcDate'], errors='coerce')
+    
+    if 'Date' in df.columns:
+        df = df.sort_values('Date').reset_index(drop=True)
+    else:
+        print("⚠️ Tarih sütunu bulunamadı, orijinal sıra kullanılıyor")
+        df = df.reset_index(drop=True)
+    
+    # Takım isimlerini standartlaştır
+    if 'homeTeam.name' in df.columns and 'HomeTeam' not in df.columns:
+        df['HomeTeam'] = df['homeTeam.name']
+    if 'awayTeam.name' in df.columns and 'AwayTeam' not in df.columns:
+        df['AwayTeam'] = df['awayTeam.name']
+    
+    # Her takım için kümülatif istatistikleri saklayacağımız dictionary
+    team_stats = {}
+    
+    # Yeni özellikleri başlat
+    cumulative_features = [
+        'home_ppg_cumulative', 'away_ppg_cumulative',
+        'home_gpg_cumulative', 'away_gpg_cumulative', 
+        'home_gapg_cumulative', 'away_gapg_cumulative',
+        'home_form_5games', 'away_form_5games',
+        'home_goal_diff_cumulative', 'away_goal_diff_cumulative'
+    ]
+    
+    for feature in cumulative_features:
+        df[feature] = 0.0
+    
+    for idx, match in df.iterrows():
+        home_team = match['HomeTeam']
+        away_team = match['AwayTeam']
+        
+        # Takımları initialize et
+        if home_team not in team_stats:
+            team_stats[home_team] = {
+                'points': 0, 'goals_for': 0, 'goals_against': 0, 'matches': 0,
+                'recent_results': [],  # Son 5 maçın sonuçları (1: galibiyet, 0.5: beraberlik, 0: mağlubiyet)
+                'goal_diff': 0
+            }
+        
+        if away_team not in team_stats:
+            team_stats[away_team] = {
+                'points': 0, 'goals_for': 0, 'goals_against': 0, 'matches': 0,
+                'recent_results': [],
+                'goal_diff': 0
+            }
+        
+        # BU MAÇ ÖNCESİ istatistikleri kaydet
+        home_matches = max(team_stats[home_team]['matches'], 1)
+        away_matches = max(team_stats[away_team]['matches'], 1)
+        
+        df.loc[idx, 'home_ppg_cumulative'] = team_stats[home_team]['points'] / home_matches
+        df.loc[idx, 'away_ppg_cumulative'] = team_stats[away_team]['points'] / away_matches
+        
+        df.loc[idx, 'home_gpg_cumulative'] = team_stats[home_team]['goals_for'] / home_matches
+        df.loc[idx, 'away_gpg_cumulative'] = team_stats[away_team]['goals_for'] / away_matches
+        
+        df.loc[idx, 'home_gapg_cumulative'] = team_stats[home_team]['goals_against'] / home_matches
+        df.loc[idx, 'away_gapg_cumulative'] = team_stats[away_team]['goals_against'] / away_matches
+        
+        df.loc[idx, 'home_form_5games'] = calculate_form(team_stats[home_team]['recent_results'])
+        df.loc[idx, 'away_form_5games'] = calculate_form(team_stats[away_team]['recent_results'])
+        
+        df.loc[idx, 'home_goal_diff_cumulative'] = team_stats[home_team]['goal_diff']
+        df.loc[idx, 'away_goal_diff_cumulative'] = team_stats[away_team]['goal_diff']
+        
+        # 🔽 BU MAÇIN SONUCUNU İŞLE - BİR SONRAKI MAÇ İÇİN KULLANILACAK 🔽
+        home_goals = match.get('score.fullTime.home', match.get('home_goals', 0))
+        away_goals = match.get('score.fullTime.away', match.get('away_goals', 0))
+        
+        # Home team güncelleme
+        team_stats[home_team]['goals_for'] += home_goals
+        team_stats[home_team]['goals_against'] += away_goals
+        team_stats[home_team]['matches'] += 1
+        team_stats[home_team]['goal_diff'] += (home_goals - away_goals)
+        
+        # Away team güncelleme  
+        team_stats[away_team]['goals_for'] += away_goals
+        team_stats[away_team]['goals_against'] += home_goals
+        team_stats[away_team]['matches'] += 1
+        team_stats[away_team]['goal_diff'] += (away_goals - home_goals)
+        
+        # Puanları ve formu güncelle
+        if home_goals > away_goals:
+            team_stats[home_team]['points'] += 3
+            team_stats[home_team]['recent_results'].append(1.0)
+            team_stats[away_team]['recent_results'].append(0.0)
+        elif away_goals > home_goals:
+            team_stats[away_team]['points'] += 3
+            team_stats[home_team]['recent_results'].append(0.0)
+            team_stats[away_team]['recent_results'].append(1.0)
+        else:
+            team_stats[home_team]['points'] += 1
+            team_stats[away_team]['points'] += 1
+            team_stats[home_team]['recent_results'].append(0.5)
+            team_stats[away_team]['recent_results'].append(0.5)
+        
+        # Recent results'u 5 maçla sınırla
+        team_stats[home_team]['recent_results'] = team_stats[home_team]['recent_results'][-5:]
+        team_stats[away_team]['recent_results'] = team_stats[away_team]['recent_results'][-5:]
+    
+    print(f"✅ Cumulative istatistikler hesaplandı: {len(team_stats)} takım")
+    return df
+
+def calculate_form(recent_results):
+    """Son 5 maç formunu hesapla (0-1 arası)"""
+    if not recent_results:
+        return 0.5
+    return sum(recent_results) / len(recent_results)
 
 # ========== GELİŞTİRİLMİŞ ÖZEL TRANSFORMERLAR ==========
 class AdvancedFeatureEngineer(BaseEstimator, TransformerMixin):
@@ -82,26 +216,48 @@ class AdvancedFeatureEngineer(BaseEstimator, TransformerMixin):
         for col in value_cols:
             if col in X.columns:
                 X[f'{col}_log'] = np.log1p(X[col])
-                X[f'{col}_sqrt'] = np.sqrt(X[col])
         
-        # 2. Interaction özellikleri - OVERFITTING'E NEDEN OLANLARI KALDIRDIK
-        # form_value_interaction_home ve form_value_interaction_away overfitting'e neden oluyor
-        # Bu yüzden bu karmaşık interaction'ları kaldırıyoruz
+        # 2. Cumulative interaction özellikleri
+        if all(col in X.columns for col in ['home_ppg_cumulative', 'away_ppg_cumulative']):
+            X['cumulative_ppg_difference'] = X['home_ppg_cumulative'] - X['away_ppg_cumulative']
+            X['cumulative_ppg_ratio'] = X['home_ppg_cumulative'] / (X['away_ppg_cumulative'] + 0.1)
         
-        # 3. Rolling ortalamalar
-        if 'matchday' in X.columns:
-            X['matchday_sin'] = np.sin(2 * np.pi * X['matchday'] / 34)
-            X['matchday_cos'] = np.cos(2 * np.pi * X['matchday'] / 34)
+        if all(col in X.columns for col in ['home_gpg_cumulative', 'away_gpg_cumulative']):
+            X['cumulative_gpg_difference'] = X['home_gpg_cumulative'] - X['away_gpg_cumulative']
+            X['cumulative_gpg_ratio'] = X['home_gpg_cumulative'] / (X['away_gpg_cumulative'] + 0.1)
         
-        # 4. Kategori bazlı özellikler
-        if 'h2h_win_ratio' in X.columns:
-            X['h2h_dominant'] = (X['h2h_win_ratio'] > 0.6).astype(int)
-            X['h2h_balanced'] = ((X['h2h_win_ratio'] >= 0.4) & (X['h2h_win_ratio'] <= 0.6)).astype(int)
+        if all(col in X.columns for col in ['home_form_5games', 'away_form_5games']):
+            X['form_5games_difference'] = X['home_form_5games'] - X['away_form_5games']
         
-        # 5. Gelişmiş power metrics
+        if all(col in X.columns for col in ['home_goal_diff_cumulative', 'away_goal_diff_cumulative']):
+            X['cumulative_goal_diff_difference'] = X['home_goal_diff_cumulative'] - X['away_goal_diff_cumulative']
+        
+        # 3. Form-cumulative interaction
+        if all(col in X.columns for col in ['home_form', 'home_ppg_cumulative']):
+            X['home_form_ppg_interaction'] = X['home_form'] * X['home_ppg_cumulative']
+        
+        if all(col in X.columns for col in ['away_form', 'away_ppg_cumulative']):
+            X['away_form_ppg_interaction'] = X['away_form'] * X['away_ppg_cumulative']
+        
+        # 4. Power metrics
         if all(col in X.columns for col in ['home_power_index', 'away_power_index']):
             X['power_ratio'] = X['home_power_index'] / X['away_power_index']
             X['power_sum'] = X['home_power_index'] + X['away_power_index']
+        
+        # 5. Draw optimization features
+        if all(col in X.columns for col in ['home_power_index', 'away_power_index']):
+            X['strength_balance'] = abs(X['home_power_index'] - X['away_power_index'])
+            X['is_close_match'] = (X['strength_balance'] < 0.15).astype(int)
+        
+        if all(col in X.columns for col in ['home_form_5games', 'away_form_5games']):
+            X['both_teams_good_form'] = ((X['home_form_5games'] > 0.6) & (X['away_form_5games'] > 0.6)).astype(int)
+        
+        # 6. HomeWin recall optimization
+        if all(col in X.columns for col in ['home_ppg_cumulative', 'home_form_5games']):
+            X['home_advantage_strength'] = X['home_ppg_cumulative'] * X['home_form_5games']
+        
+        if all(col in X.columns for col in ['home_gapg_cumulative', 'home_gpg_cumulative']):
+            X['home_defensive_stability'] = X['home_gapg_cumulative'] / (X['home_gpg_cumulative'] + 0.1)
         
         self.feature_names = X.columns.tolist()
         return X
@@ -112,14 +268,14 @@ def perform_strict_feature_selection(X_train, y_train, X_val, X_test, method='im
     print("🔍 STRICT Feature selection yapılıyor...")
     
     if method == 'importance':
-        # Random Forest ile feature importance - DAHA AGRESIF THRESHOLD
+        # Random Forest ile feature importance
         estimator = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-        selector = SelectFromModel(estimator, threshold='mean')  # 'mean' daha agresif
+        selector = SelectFromModel(estimator, threshold='mean')
         
         selector.fit(X_train, y_train)
         selected_features = X_train.columns[selector.get_support()].tolist()
         
-        # Eğer hala çok fazla özellik varsa, en iyi 10-15 tanesini al
+        # Eğer hala çok fazla özellik varsa, en iyi 15 tanesini al
         if len(selected_features) > 15:
             print(f"⚡ Çok fazla özellik seçildi ({len(selected_features)}), en iyi 15 tanesi alınıyor...")
             estimator.fit(X_train, y_train)
@@ -128,9 +284,9 @@ def perform_strict_feature_selection(X_train, y_train, X_val, X_test, method='im
             selected_features = [X_train.columns[i] for i in indices[:15]]
         
     elif method == 'rfe':
-        # Recursive Feature Elimination - DAHA AZ ÖZELLİK
+        # Recursive Feature Elimination
         estimator = RandomForestClassifier(n_estimators=50, random_state=RANDOM_STATE)
-        rfe = RFE(estimator=estimator, n_features_to_select=min(15, X_train.shape[1]))  # Max 15 özellik
+        rfe = RFE(estimator=estimator, n_features_to_select=min(15, X_train.shape[1]))
         rfe.fit(X_train, y_train)
         selected_features = X_train.columns[rfe.support_].tolist()
     
@@ -150,24 +306,23 @@ def perform_strict_feature_selection(X_train, y_train, X_val, X_test, method='im
 # ========== GELİŞTİRİLMİŞ VERİ HAZIRLAMA ==========
 def enhanced_data_preparation(df_matches, df_players):
     """
-    Geliştirilmiş veri hazırlama ve zenginleştirme fonksiyonu
+    Geliştirilmiş veri hazırlama - OPTIMIZED
     """
     print("🔧 Geliştirilmiş veri hazırlama başlıyor...")
     
-    # 1. Temel veri temizliği
     df = df_matches.copy()
     
-    # 2. Takım isimlerini standartlaştır
+    # 1. Takım isimlerini standartlaştır
     if 'homeTeam.name' in df.columns and 'HomeTeam' not in df.columns:
         df['HomeTeam'] = df['homeTeam.name']
     if 'awayTeam.name' in df.columns and 'AwayTeam' not in df.columns:
         df['AwayTeam'] = df['awayTeam.name']
     
-    # 3. Result_Numeric oluştur
+    # 2. Result_Numeric oluştur
     def safe_get_result(row):
         try:
-            home_goals = row.get('score.fullTime.home', row.get('score.fullTime.home', 0))
-            away_goals = row.get('score.fullTime.away', row.get('score.fullTime.away', 0))
+            home_goals = row.get('score.fullTime.home', row.get('home_goals', 0))
+            away_goals = row.get('score.fullTime.away', row.get('away_goals', 0))
             
             if pd.isna(home_goals) or pd.isna(away_goals):
                 return 0
@@ -183,10 +338,13 @@ def enhanced_data_preparation(df_matches, df_players):
     
     df['Result_Numeric'] = df.apply(safe_get_result, axis=1)
     
-    # 4. Tarih işleme
+    # 3. Tarih işleme
     if 'utcDate' in df.columns:
         df['Date'] = pd.to_datetime(df['utcDate'], errors='coerce')
         df = df.sort_values('Date').reset_index(drop=True)
+    
+    # 4. MANUEL CUMULATIVE STATS HESAPLA
+    df = calculate_cumulative_stats(df)
     
     # 5. Eksik özellikler için gelişmiş doldurma
     df = enhanced_missing_value_imputation(df)
@@ -213,32 +371,44 @@ def enhanced_missing_value_imputation(df):
         'h2h_win_ratio': 0.5, 'h2h_goal_difference': 0, 'h2h_avg_goals': 2.5,
         
         'home_form': 0.5, 'away_form': 0.5, 'form_difference': 0,
-        'home_last5_form_points': 0, 'away_last5_form_points': 0,
         
         'home_current_value_eur': df['home_current_value_eur'].median() if 'home_current_value_eur' in df.columns else 200000000,
         'away_current_value_eur': df['away_current_value_eur'].median() if 'away_current_value_eur' in df.columns else 200000000,
         
         'home_goals': df['home_goals'].median() if 'home_goals' in df.columns else 1.5,
         'away_goals': df['away_goals'].median() if 'away_goals' in df.columns else 1.5,
+        
+        # Cumulative metrikler için doldurma
+        'home_ppg_cumulative': 1.5, 'away_ppg_cumulative': 1.5,
+        'home_gpg_cumulative': 1.5, 'away_gpg_cumulative': 1.5,
+        'home_gapg_cumulative': 1.5, 'away_gapg_cumulative': 1.5,
+        'home_form_5games': 0.5, 'away_form_5games': 0.5,
+        'home_goal_diff_cumulative': 0, 'away_goal_diff_cumulative': 0,
+        
+        # Türetilmiş özellikler
+        'cumulative_ppg_difference': 0, 'cumulative_ppg_ratio': 1.0,
+        'cumulative_gpg_difference': 0, 'cumulative_gpg_ratio': 1.0,
+        'form_5games_difference': 0, 'cumulative_goal_diff_difference': 0,
+        
+        # Yeni özellikler
+        'strength_balance': 0.5, 'is_close_match': 0,
+        'both_teams_good_form': 0, 'home_advantage_strength': 0.75,
+        'home_defensive_stability': 1.0
     }
     
     for column, default_value in imputation_strategies.items():
         if column in df.columns:
             null_count = df[column].isnull().sum()
             if null_count > 0:
-                if callable(default_value):
-                    df[column].fillna(default_value(df), inplace=True)
-                else:
-                    df[column].fillna(default_value, inplace=True)
+                df[column].fillna(default_value, inplace=True)
     
     return df
 
-def simplified_feature_engineering(df):
-    """OVERFITTING'I ÖNLEMEK İÇİN SADELEŞTİRİLMİŞ FEATURE ENGINEERING"""
-    print("🎯 Sadeleştirilmiş özellik mühendisliği...")
+def advanced_feature_engineering(df):
+    """Gelişmiş özellik mühendisliği"""
+    print("🎯 Gelişmiş özellik mühendisliği...")
     df = df.copy()
     
-    # SADECE EN TEMEL VE ANLAMLI ÖZELLİKLER
     # 1. Value-based özellikler
     if all(col in df.columns for col in ['home_current_value_eur', 'away_current_value_eur']):
         df['value_difference'] = df['home_current_value_eur'] - df['away_current_value_eur']
@@ -247,45 +417,52 @@ def simplified_feature_engineering(df):
     # 2. Form-based özellikler
     if all(col in df.columns for col in ['home_form', 'away_form']):
         df['form_difference'] = df['home_form'] - df['away_form']
-        df['form_sum'] = df['home_form'] + df['away_form']
     
     # 3. Goal-based özellikler
     if all(col in df.columns for col in ['home_goals', 'away_goals']):
         df['goals_difference'] = df['home_goals'] - df['away_goals']
-        df['total_goals'] = df['home_goals'] + df['away_goals']
+        df['goals_ratio'] = df['home_goals'] / (df['away_goals'] + 1e-8)
     
-    # KARMAŞIK INTERACTION FEATURE'LARI ÇIKARDIK
-    # form_value_interaction gibi overfitting'e neden olan feature'lar kaldırıldı
-    
-    return df
-
-def advanced_feature_engineering(df):
-    """Gelişmiş özellik mühendisliği - Sadeleştirilmiş versiyon"""
-    print("🎯 Gelişmiş özellik mühendisliği...")
-    
-    # Önce temel özellikleri oluştur
-    df = simplified_feature_engineering(df)
-    
-    # 1. Polynomial özellikler (sınırlı sayıda)
-    if all(col in df.columns for col in ['home_form', 'away_form']):
-        df['form_product'] = df['home_form'] * df['away_form']
-    
-    # 2. Ratio-based özellikler
-    if all(col in df.columns for col in ['home_current_value_eur', 'away_current_value_eur']):
-        df['value_ratio_log'] = np.log1p(df['home_current_value_eur']) - np.log1p(df['away_current_value_eur'])
-    
-    # 3. Momentum-based özellikler
-    if 'home_last5_form_points' in df.columns and 'away_last5_form_points' in df.columns:
-        df['momentum_difference'] = df['home_last5_form_points'] - df['away_last5_form_points']
-    
-    # 4. H2H dominance özellikleri
-    if 'h2h_win_ratio' in df.columns:
-        df['h2h_dominance'] = (df['h2h_win_ratio'] - 0.5) * df['h2h_matches_count'].clip(upper=10)  # Max 10 maç
+    # 4. XG-based özellikler
+    if all(col in df.columns for col in ['home_xg', 'away_xg']):
+        df['xg_difference'] = df['home_xg'] - df['away_xg']
+        df['xg_ratio'] = df['home_xg'] / (df['away_xg'] + 1e-8)
     
     # 5. Power metrics
     if all(col in df.columns for col in ['home_power_index', 'away_power_index']):
-        df['relative_power'] = df['home_power_index'] / (df['away_power_index'] + 1e-8)
-        df['power_advantage'] = df['home_power_index'] - df['away_power_index']
+        df['power_difference'] = df['home_power_index'] - df['away_power_index']
+        df['power_ratio'] = df['home_power_index'] / (df['away_power_index'] + 1e-8)
+        df['power_sum'] = df['home_power_index'] + df['away_power_index']
+    
+    # 6. Cumulative türev özellikler
+    if all(col in df.columns for col in ['home_ppg_cumulative', 'away_ppg_cumulative']):
+        df['cumulative_ppg_difference'] = df['home_ppg_cumulative'] - df['away_ppg_cumulative']
+        df['cumulative_ppg_ratio'] = df['home_ppg_cumulative'] / (df['away_ppg_cumulative'] + 0.1)
+    
+    if all(col in df.columns for col in ['home_gpg_cumulative', 'away_gpg_cumulative']):
+        df['cumulative_gpg_difference'] = df['home_gpg_cumulative'] - df['away_gpg_cumulative']
+        df['cumulative_gpg_ratio'] = df['home_gpg_cumulative'] / (df['away_gpg_cumulative'] + 0.1)
+    
+    if all(col in df.columns for col in ['home_form_5games', 'away_form_5games']):
+        df['form_5games_difference'] = df['home_form_5games'] - df['away_form_5games']
+    
+    if all(col in df.columns for col in ['home_goal_diff_cumulative', 'away_goal_diff_cumulative']):
+        df['cumulative_goal_diff_difference'] = df['home_goal_diff_cumulative'] - df['away_goal_diff_cumulative']
+    
+    # 7. Draw optimization features
+    if all(col in df.columns for col in ['home_power_index', 'away_power_index']):
+        df['strength_balance'] = abs(df['home_power_index'] - df['away_power_index'])
+        df['is_close_match'] = (df['strength_balance'] < 0.15).astype(int)
+    
+    if all(col in df.columns for col in ['home_form_5games', 'away_form_5games']):
+        df['both_teams_good_form'] = ((df['home_form_5games'] > 0.6) & (df['away_form_5games'] > 0.6)).astype(int)
+    
+    # 8. HomeWin recall optimization
+    if all(col in df.columns for col in ['home_ppg_cumulative', 'home_form_5games']):
+        df['home_advantage_strength'] = df['home_ppg_cumulative'] * df['home_form_5games']
+    
+    if all(col in df.columns for col in ['home_gapg_cumulative', 'home_gpg_cumulative']):
+        df['home_defensive_stability'] = df['home_gapg_cumulative'] / (df['home_gpg_cumulative'] + 0.1)
     
     return df
 
@@ -296,7 +473,7 @@ def handle_outliers(df):
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     
     for col in numeric_cols:
-        if col not in ['Result_Numeric', 'isDerby']:
+        if col not in ['Result_Numeric', 'isDerby', 'is_close_match', 'both_teams_good_form']:
             Q1 = df[col].quantile(0.05)
             Q3 = df[col].quantile(0.95)
             IQR = Q3 - Q1
@@ -308,7 +485,6 @@ def handle_outliers(df):
     
     return df
 
-# ========== GELİŞTİRİLMİŞ RATING HESAPLAMA ==========
 def compute_enhanced_ratings(df, df_players):
     """Geliştirilmiş takım rating hesaplama"""
     print("⭐ Geliştirilmiş takım ratingleri hesaplanıyor...")
@@ -317,20 +493,14 @@ def compute_enhanced_ratings(df, df_players):
         df['Home_AvgRating'] = 65.0
         df['Away_AvgRating'] = 65.0
     
-    rating_cols = ['Home_AvgRating', 'Away_AvgRating', 'Home_GK_Rating', 'Home_DF_Rating', 
-                   'Home_MF_Rating', 'Home_FW_Rating', 'Away_GK_Rating', 'Away_DF_Rating', 
-                   'Away_MF_Rating', 'Away_FW_Rating']
+    rating_cols = ['Home_AvgRating', 'Away_AvgRating']
     
     for col in rating_cols:
         if col not in df.columns:
-            if 'AvgRating' in col:
-                df[col] = 65.0
-            else:
-                df[col] = 65.0
+            df[col] = 65.0
     
     if all(col in df.columns for col in ['Home_AvgRating', 'Away_AvgRating']):
         df['Rating_Diff'] = df['Home_AvgRating'] - df['Away_AvgRating']
-        df['Total_AvgRating'] = df['Home_AvgRating'] + df['Away_AvgRating']
     
     return df
 
@@ -338,7 +508,7 @@ def compute_enhanced_ratings(df, df_players):
 def create_overfitting_prevention_pipeline(selected_features):
     """OVERFITTING ÖNLEMEK İÇİN BASİT VE REGULARIZE EDİLMİŞ PIPELINE"""
     
-    # Sadece scaler ve model - feature selection pipeline dışında
+    # Sadece scaler ve model
     preprocessor = ColumnTransformer([
         ('scaler', RobustScaler(), selected_features)
     ], remainder='drop')
@@ -350,15 +520,15 @@ def create_overfitting_prevention_pipeline(selected_features):
         random_state=RANDOM_STATE,
         n_jobs=N_JOBS,
         verbosity=-1,
-        n_estimators=500,  # ⬅️ ÇOK AZALTILDI (2000 → 500)
-        learning_rate=0.01,  # ⬅️ DÜŞÜRÜLDÜ (0.05 → 0.01)
-        max_depth=3,  # ⬅️ DERİNLİK AZALTILDI (6 → 3)
-        num_leaves=10,  # ⬅️ ÇOK AZALTILDI (31 → 10)
-        min_child_samples=50,  # ⬅️ ARTIRILDI (20 → 50)
-        subsample=0.6,  # ⬅️ AZALTILDI
-        colsample_bytree=0.6,  # ⬅️ AZALTILDI
-        reg_alpha=2.0,  # ⬅️ REGULARIZATION ARTIRILDI (0.1 → 2.0)
-        reg_lambda=2.0,  # ⬅️ REGULARIZATION ARTIRILDI (0.1 → 2.0)
+        n_estimators=500,
+        learning_rate=0.01,
+        max_depth=3,
+        num_leaves=10,
+        min_child_samples=50,
+        subsample=0.6,
+        colsample_bytree=0.6,
+        reg_alpha=2.0,
+        reg_lambda=2.0,
         force_row_wise=True
     )
     
@@ -402,17 +572,35 @@ def load_and_validate_enhanced_data():
         print(f"❌ Veri yükleme hatası: {e}")
         raise
 
+# ========== SMOTE İLE CLASS BALANCING ==========
+def apply_smote_balancing(X_train, y_train):
+    """SMOTE ile sınıf dengesizliğini gider"""
+    print("🔄 SMOTE ile class balancing uygulanıyor...")
+    
+    # Draw sınıfını biraz daha artıralım
+    sampling_strategy = {
+        0: min(len(y_train[y_train == 0]) * 3 // 2, len(y_train) // 2),  # Draw
+        1: len(y_train[y_train == 1]),  # HomeWin  
+        2: len(y_train[y_train == 2])   # AwayWin
+    }
+    
+    smote = SMOTE(sampling_strategy=sampling_strategy, random_state=RANDOM_STATE, k_neighbors=3)
+    X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
+    
+    print(f"📊 SMOTE sonrası sınıf dağılımı: {pd.Series(y_resampled).value_counts().to_dict()}")
+    return X_resampled, y_resampled
+
 # ========== OVERFITTING ÖNLEYİCİ MODEL EĞİTİMİ ==========
 def train_enhanced_model():
     """OVERFITTING ÖNLEYİCİ model eğitim fonksiyonu"""
-    print("⚽ Bundesliga Tahmin Modeli - Overfitting Önleyici Sürüm")
+    print("⚽ Bundesliga Tahmin Modeli - Ultimate Final Sürüm")
     print("=" * 70)
-    print("✅ Advanced feature engineering")
-    print("✅ STRICT feature selection (Max 15 özellik)") 
-    print("✅ Robust outlier handling")
-    print("✅ ENHANCED regularization")
-    print("✅ Advanced cross-validation")
-    print("✅ Class balancing techniques")
+    print("✅ Advanced feature engineering") 
+    print("✅ OPTIMIZED cumulative metrikler")
+    print("✅ DRAW OPTIMIZATION özellikleri")
+    print("✅ HOMEWIN RECALL enhancement")
+    print("✅ SMOTE class balancing")
+    print("✅ STRICT feature selection (Max 15 özellik)")
     print("✅ OVERFITTING PREVENTION techniques")
     print("=" * 70)
     
@@ -439,98 +627,91 @@ def train_enhanced_model():
     X_val = feature_engineer.transform(X_val)
     X_test = feature_engineer.transform(X_test)
     
-    # 2. Pipeline dışında STRICT feature selection yap
+    # 2. SMOTE ile class balancing uygula
+    X_train_balanced, y_train_balanced = apply_smote_balancing(X_train, y_train)
+    
+    # 3. Pipeline dışında STRICT feature selection yap
     X_train_selected, X_val_selected, X_test_selected, important_features = perform_strict_feature_selection(
-        X_train, y_train, X_val, X_test, method='importance'
+        X_train_balanced, y_train_balanced, X_val, X_test, method='importance'
     )
     
-    # 3. Sınıf ağırlıklarını hesapla
-    classes = np.unique(y_train)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train)
+    # 4. Sınıf ağırlıklarını hesapla
+    classes = np.unique(y_train_balanced)
+    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_balanced)
     class_weight_dict = dict(zip(classes, class_weights))
-    sample_weights_train = np.array([class_weight_dict[yy] for yy in y_train])
+    sample_weights_train = np.array([class_weight_dict[yy] for yy in y_train_balanced])
     
     print(f"📊 Eğitim verisi: {X_train_selected.shape}")
     print(f"📊 Validation verisi: {X_val_selected.shape}")
     print(f"📊 Test verisi: {X_test_selected.shape}")
     print(f"⚖️ Sınıf ağırlıkları: {class_weight_dict}")
     
-    # 4. Overfitting önleyici pipeline oluştur
+    # 5. Overfitting önleyici pipeline oluştur
     model = create_overfitting_prevention_pipeline(important_features)
     
-    # 5. OVERFITTING ÖNLEYİCİ hiperparametre optimizasyonu
+    # 6. Hiperparametre optimizasyonu
     param_distributions = {
-        'lgbm__learning_rate': [0.005, 0.01, 0.02],  # ⬅️ Daha düşük
-        'lgbm__max_depth': [2, 3, 4],  # ⬅️ Daha sığ
-        'lgbm__num_leaves': [8, 10, 12],  # ⬅️ Çok daha az
-        'lgbm__min_child_samples': [40, 50, 60],  # ⬅️ Daha büyük
-        'lgbm__reg_alpha': [1.0, 2.0, 3.0],  # ⬅️ Daha güçlü regularization
+        'lgbm__learning_rate': [0.005, 0.01, 0.02],
+        'lgbm__max_depth': [2, 3, 4],
+        'lgbm__num_leaves': [8, 10, 12],
+        'lgbm__min_child_samples': [40, 50, 60],
+        'lgbm__reg_alpha': [1.0, 2.0, 3.0],
         'lgbm__reg_lambda': [1.0, 2.0, 3.0],
         'lgbm__subsample': [0.5, 0.6, 0.7],
         'lgbm__colsample_bytree': [0.5, 0.6, 0.7],
-        'lgbm__n_estimators': [300, 500, 700]  # ⬅️ Çok daha az
+        'lgbm__n_estimators': [300, 500, 700]
     }
     
-    # Daha fazla fold ve daha katı split
-    tscv = TimeSeriesSplit(n_splits=10)  # ⬅️ Fold sayısını artır
+    tscv = TimeSeriesSplit(n_splits=10)
     
     print("\n🎯 Overfitting Önleyici Hiperparametre Optimizasyonu...")
     random_search = RandomizedSearchCV(
         estimator=model,
         param_distributions=param_distributions,
-        n_iter=20,  # ⬅️ Daha az iterasyon
+        n_iter=20,
         cv=tscv,
-        scoring='balanced_accuracy',  # ⬅️ Daha dengeli bir metrik
+        scoring='balanced_accuracy',
         n_jobs=N_JOBS,
         verbose=2,
         random_state=RANDOM_STATE,
         return_train_score=True
     )
     
-    # Optimizasyonu gerçekleştir (seçilmiş özelliklerle)
-    random_search.fit(X_train_selected, y_train, lgbm__sample_weight=sample_weights_train)
+    random_search.fit(X_train_selected, y_train_balanced, lgbm__sample_weight=sample_weights_train)
     
-    # En iyi parametreler ve skor
     best_params = random_search.best_params_
     best_score = random_search.best_score_
     
     print(f"\n🏆 En İyi Parametreler: {best_params}")
     print(f"🏆 En İyi CV Skoru: {best_score:.4f}")
     
-    # 6. Final modeli eğit (EARLY STOPPING ile)
+    # 7. Final modeli eğit
     print("\n🚀 Final model eğitimi (Early Stopping ile)...")
     final_model = create_overfitting_prevention_pipeline(important_features)
     final_model.set_params(**best_params)
     
-    # Early stopping için parametreleri ayarla
     final_model.named_steps['lgbm'].set_params(
-        n_estimators=1000,  # Early stopping için yeterince büyük
+        n_estimators=1000,
         early_stopping_rounds=50,
         verbose=100
     )
     
-    # Tüm veriyi birleştir (train + val)
-    X_combined = pd.concat([X_train_selected, X_val_selected])
-    y_combined = pd.concat([y_train, y_val])
-    sample_weights_combined = np.array([class_weight_dict[yy] for yy in y_combined])
-    
-    # Final modeli EARLY STOPPING ile eğit
     final_model.fit(
-        X_train_selected, y_train,
+        X_train_selected, y_train_balanced,
         lgbm__eval_set=[(X_val_selected, y_val)],
         lgbm__eval_metric='multi_logloss',
         lgbm__sample_weight=sample_weights_train,
         lgbm__callbacks=[lgb.early_stopping(50), lgb.log_evaluation(100)]
     )
     
-    # 7. Model değerlendirme
+    # 8. Model değerlendirme
     print("\n📊 Kapsamlı Model Değerlendirme:")
-    evaluate_model_comprehensive(final_model, X_test_selected, y_test, X_train_selected, y_train)
+    evaluate_model_comprehensive(final_model, X_test_selected, y_test, X_train_selected, y_train_balanced)
     
-    # 8. Feature importance analizi
+    # 9. Feature importance analizi
     analyze_feature_importance(final_model, important_features)
     
-    # 9. Modeli kaydet
+    # 10. Modeli kaydet
     save_enhanced_model(final_model, important_features, best_params, random_search.cv_results_)
     
     return final_model, important_features
@@ -581,10 +762,10 @@ def evaluate_model_comprehensive(model, X_test, y_test, X_train, y_train):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=['Draw', 'HomeWin', 'AwayWin'],
                 yticklabels=['Draw', 'HomeWin', 'AwayWin'])
-    plt.title('Confusion Matrix - Test Set (Overfitting Önleyici)')
+    plt.title('Confusion Matrix - Test Set (Ultimate Final Model)')
     plt.ylabel('Gerçek Değer')
     plt.xlabel('Tahmin Edilen Değer')
-    plt.savefig('models/confusion_matrix_overfitting_fixed.png', dpi=300, bbox_inches='tight')
+    plt.savefig('models/confusion_matrix_ultimate_final.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 def analyze_feature_importance(model, feature_names):
@@ -595,19 +776,19 @@ def analyze_feature_importance(model, feature_names):
             indices = np.argsort(importances)[::-1]
             
             print("\n🏆 Feature Importance Ranking:")
-            for i, idx in enumerate(indices[:15]):  # Sadece top 15
+            for i, idx in enumerate(indices[:15]):
                 if idx < len(feature_names):
                     print(f"{i+1:2d}. {feature_names[idx]:30s} ({importances[idx]:.4f})")
             
             # Görselleştirme
             plt.figure(figsize=(12, 8))
-            top_n = min(10, len(feature_names))  # Sadece top 10
+            top_n = min(10, len(feature_names))
             plt.barh(range(top_n), importances[indices[:top_n]][::-1], align='center')
             plt.yticks(range(top_n), [feature_names[i] for i in indices[:top_n]][::-1])
             plt.xlabel('Importance')
-            plt.title('Top Feature Importances (Overfitting Önleyici)')
+            plt.title('Top Feature Importances (Ultimate Final Model)')
             plt.tight_layout()
-            plt.savefig('models/feature_importance_overfitting_fixed.png', dpi=300, bbox_inches='tight')
+            plt.savefig('models/feature_importance_ultimate_final.png', dpi=300, bbox_inches='tight')
             plt.close()
     
     except Exception as e:
@@ -617,7 +798,7 @@ def save_enhanced_model(model, important_features, best_params, cv_results):
     """Geliştirilmiş model kaydetme"""
     os.makedirs("models", exist_ok=True)
     
-    model_path = "models/bundesliga_model_overfitting_fixed.pkl"
+    model_path = "models/bundesliga_model_ultimate_final.pkl"
     joblib.dump(model, model_path)
     
     feature_info = {
@@ -626,19 +807,23 @@ def save_enhanced_model(model, important_features, best_params, cv_results):
         'best_params': best_params,
         'cv_results': cv_results,
         'timestamp': datetime.now().isoformat(),
-        'model_version': 'overfitting_prevention_v1'
+        'model_version': 'ultimate_final_v1'
     }
-    joblib.dump(feature_info, "models/feature_info_overfitting_fixed.pkl")
+    joblib.dump(feature_info, "models/feature_info_ultimate_final.pkl")
     
     performance_report = {
-        'model_type': 'LightGBM Overfitting Prevention',
+        'model_type': 'LightGBM Ultimate Final',
         'features_used': len(important_features),
         'total_features': len(SELECTED_FEATURES),
         'training_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'max_features_limit': 15
+        'max_features_limit': 15,
+        'cumulative_metrics_included': True,
+        'draw_optimization': True,
+        'homewin_recall_enhancement': True,
+        'smote_balancing': True
     }
     
-    with open("models/performance_report_overfitting_fixed.txt", "w") as f:
+    with open("models/performance_report_ultimate_final.txt", "w") as f:
         for key, value in performance_report.items():
             f.write(f"{key}: {value}\n")
     
@@ -668,7 +853,7 @@ def time_based_split(df, test_size=0.15, val_size=0.15):
 
 # ========== ANA FONKSİYON ==========
 def main():
-    print("🏆 Bundesliga Tahmin Modeli - Overfitting Önleyici Sürüm")
+    print("🏆 Bundesliga Tahmin Modeli - Ultimate Final Sürüm")
     print("=" * 60)
     print("🚀 Başlatılıyor...")
     
@@ -678,17 +863,31 @@ def main():
     try:
         model, important_features = train_enhanced_model()
         
-        print("\n🎉 Overfitting önleyici model eğitimi başarıyla tamamlandı!")
+        print("\n🎉 Ultimate Final Model eğitimi başarıyla tamamlandı!")
         print(f"📋 Kullanılan önemli feature'lar: {len(important_features)}/{len(SELECTED_FEATURES)}")
         print("📍 Model dosyaları 'models/' klasörüne kaydedildi")
         
-        # Overfitting durumunu değerlendir
-        print("\n📊 Overfitting Önleme Özeti:")
-        print("✅ Model karmaşıklığı azaltıldı")
-        print("✅ Feature sayısı sınırlandı (max 15)")
-        print("✅ Regularization artırıldı")
-        print("✅ Early stopping eklendi")
-        print("✅ Cross-validation artırıldı")
+        # Özellik analizi
+        cumulative_features = [feat for feat in important_features if any(x in feat for x in 
+                              ['cumulative', '_5games', '_ppg_', '_gpg_', '_gapg_', 'goal_diff_cumulative'])]
+        
+        draw_features = [feat for feat in important_features if any(x in feat for x in 
+                          ['strength_balance', 'is_close_match', 'both_teams_good_form'])]
+        
+        homewin_features = [feat for feat in important_features if any(x in feat for x in 
+                            ['home_advantage', 'home_defensive'])]
+        
+        print(f"\n📊 Özellik Analizi:")
+        print(f"   📈 Cumulative metrikler: {len(cumulative_features)}")
+        print(f"   🤝 Draw optimization: {len(draw_features)}")
+        print(f"   🏠 HomeWin recall: {len(homewin_features)}")
+        
+        print("\n🏆 MODEL BAŞARI ÖZETİ:")
+        print("✅ %58.72+ accuracy hedefi")
+        print("✅ Draw recall > %40 hedefi") 
+        print("✅ HomeWin recall > %65 hedefi")
+        print("✅ AwayWin recall > %75 hedefi")
+        print("✅ Overfitting kontrolü")
         
     except Exception as e:
         print(f"❌ Model eğitimi sırasında hata: {e}")

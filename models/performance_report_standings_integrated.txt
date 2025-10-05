@@ -1,0 +1,6 @@
+model_type: LightGBM Standings Integrated
+features_used: 15
+total_features: 57
+training_date: 2025-10-05 10:19:37
+max_features_limit: 15
+standings_metrics_included: True
