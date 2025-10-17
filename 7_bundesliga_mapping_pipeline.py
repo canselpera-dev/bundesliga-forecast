@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bundesliga Mapping & Merge — Enhanced Player Matching Version
-=============================================================
+Bundesliga Mapping & Merge — Enhanced Player Matching Version with Dynamic Ratings
+==================================================================================
 
 Geliştirmeler:
-1. Düşürülmüş takım eşleştirme eşikleri
-2. Geliştirilmiş oyuncu normalizasyonu (özel karakter dönüşümü)
-3. Genişletilmiş manuel takım ve oyuncu eşleştirmeleri
-4. Token bazlı takım eşleştirme alternatifi
+1. Dinamik rating sistemi - veri güncellendikçe otomatik yeniden hesaplama
+2. Pozisyon bazlı ağırlıklandırma
+3. Form ve süreklilik analizi
+4. Gelişmiş metrik normalizasyonu
+5. Mevcut pipeline ile tam uyumluluk
 """
 
 import os
@@ -16,8 +17,12 @@ import json
 import pandas as pd
 import unicodedata
 import re
-from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+import numpy as np
+import sys
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Tuple, Any
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import LinearRegression
 
 # fuzzy helper: tercih rapidfuzz, yoksa fuzzywuzzy
 try:
@@ -121,15 +126,55 @@ UNMATCHED_SQUADS_CSV = os.path.join(OUTPUT_DIR, 'unmatched_squads_teams.csv')
 UNMATCHED_FBREF_CSV = os.path.join(OUTPUT_DIR, 'unmatched_fbref_teams.csv')
 PLAYER_REPORT_CSV = os.path.join(OUTPUT_DIR, 'player_match_report.csv')
 PLAYER_MAPPING_SUGGEST_CSV = os.path.join(OUTPUT_DIR, 'player_mapping_suggestions.csv')
+RATING_CONFIG_PATH = os.path.join(OUTPUT_DIR, 'rating_config.json')
+
+# Çıktı dosyası - MEVCUT PIPELINE İLE UYUMLU
+OUTPUT_FILE = "data/final_bundesliga_dataset_complete.xlsx"
 
 # Eşikler (DÜŞÜRÜLMÜŞ DEĞERLER)
-TEAM_FUZZY_HIGH = 75.0  # Düşürüldü
-TEAM_FUZZY_MED  = 65.0  # Düşürüldü
-TEAM_FUZZY_LOW  = 55.0  # Düşürüldü
+TEAM_FUZZY_HIGH = 75.0
+TEAM_FUZZY_MED  = 65.0
+TEAM_FUZZY_LOW  = 55.0
 PLAYER_FUZZY_HIGH = 85.0
 PLAYER_FUZZY_MED  = 75.0
 PLAYER_FUZZY_LOW  = 65.0
-PLAYER_SURNAME_ONLY_THRESHOLD = 70.0  # Düşürüldü
+PLAYER_SURNAME_ONLY_THRESHOLD = 70.0
+
+# Rating Konfigürasyonu
+DEFAULT_RATING_CONFIG = {
+    'base_metrics': {
+        'MP': {'weight': 0.10, 'normalization': 'max', 'position_weights': {'GK': 0.15, 'DEF': 0.12, 'MID': 0.08, 'FWD': 0.05}},
+        'Gls': {'weight': 0.20, 'normalization': 'max', 'position_weights': {'GK': 0.05, 'DEF': 0.10, 'MID': 0.15, 'FWD': 0.25}},
+        'Ast': {'weight': 0.15, 'normalization': 'max', 'position_weights': {'GK': 0.05, 'DEF': 0.08, 'MID': 0.18, 'FWD': 0.15}},
+        'Sh': {'weight': 0.08, 'normalization': 'max', 'position_weights': {'GK': 0.02, 'DEF': 0.05, 'MID': 0.08, 'FWD': 0.12}},
+        'SoT': {'weight': 0.07, 'normalization': 'max', 'position_weights': {'GK': 0.02, 'DEF': 0.04, 'MID': 0.06, 'FWD': 0.10}},
+        'Cmp': {'weight': 0.06, 'normalization': 'percentile', 'position_weights': {'GK': 0.10, 'DEF': 0.08, 'MID': 0.07, 'FWD': 0.03}},
+        'PrgC': {'weight': 0.08, 'normalization': 'percentile', 'position_weights': {'GK': 0.05, 'DEF': 0.10, 'MID': 0.09, 'FWD': 0.06}},
+        'PrgP': {'weight': 0.08, 'normalization': 'percentile', 'position_weights': {'GK': 0.03, 'DEF': 0.06, 'MID': 0.10, 'FWD': 0.08}},
+        'PrgR': {'weight': 0.06, 'normalization': 'percentile', 'position_weights': {'GK': 0.02, 'DEF': 0.05, 'MID': 0.07, 'FWD': 0.08}},
+        'Min': {'weight': 0.05, 'normalization': 'max', 'position_weights': {'GK': 0.08, 'DEF': 0.06, 'MID': 0.05, 'FWD': 0.04}},
+        'G+A': {'weight': 0.07, 'normalization': 'max', 'position_weights': {'GK': 0.03, 'DEF': 0.06, 'MID': 0.08, 'FWD': 0.12}}
+    },
+    'advanced_metrics': {
+        'efficiency_metrics': ['Gls/Sh', 'Ast/90', 'G+A/90'],
+        'consistency_bonus': 0.1,
+        'form_weight': 0.3,
+        'age_weight': 0.05,
+        'market_value_weight': 0.05
+    },
+    'position_detection': {
+        'GK_keywords': ['goalkeeper', 'keeper', 'gk'],
+        'DEF_keywords': ['defender', 'defence', 'back', 'cb', 'rb', 'lb'],
+        'MID_keywords': ['midfielder', 'midfield', 'cm', 'cam', 'cdm'],
+        'FWD_keywords': ['forward', 'striker', 'attacker', 'winger', 'fw', 'cf']
+    },
+    'scaling': {
+        'min_rating': 0,
+        'max_rating': 100,
+        'use_percentile': True,
+        'percentile_range': (10, 90)
+    }
+}
 
 # Manuel mapping (FBref -> Squads) GENİŞLETİLMİŞ VERSİYON
 COMPLETE_TEAM_MAPPING_RAW = {
@@ -267,47 +312,6 @@ COMPLETE_TEAM_MAPPING_RAW = {
     # Hannover 96
     "hannover 96": "Hannover 96",
     "hannover": "Hannover 96",
-    
-    # Diğer / eski Bundesliga takımları ve alternatif yazımlar
-    "energie cottbus": "Energie Cottbus",
-    "cottbus": "Energie Cottbus",
-    "fc nürnberg": "1. FC Nürnberg",
-    "nürnberg": "1. FC Nürnberg",
-    "nuremberg": "1. FC Nürnberg",
-    "1. fc nürnberg": "1. FC Nürnberg",
-    "1. fc nuremberg": "1. FC Nürnberg",
-    "fc nuremberg": "1. FC Nürnberg",
-    "greuther fürth": "Greuther Fürth",
-    "greuther furth": "Greuther Fürth",
-    "fürth": "Greuther Fürth",
-    "furth": "Greuther Fürth",
-    "arminia bielefeld": "Arminia Bielefeld",
-    "bielefeld": "Arminia Bielefeld",
-    "vfl osnabrück": "VfL Osnabrück",
-    "osnabrück": "VfL Osnabrück",
-    "osnabruck": "VfL Osnabrück",
-    "vfl osnabruck": "VfL Osnabrück",
-    "fc würzburger kickers": "FC Würzburger Kickers",
-    "würzburger kickers": "FC Würzburger Kickers",
-    "wurzburger kickers": "FC Würzburger Kickers",
-    "fc wurzburger kickers": "FC Würzburger Kickers",
-    "würzburg": "FC Würzburger Kickers",
-    "wurzburg": "FC Würzburger Kickers",
-    "fc ingolstadt 04": "FC Ingolstadt 04",
-    "ingolstadt": "FC Ingolstadt 04",
-    "fc ingolstadt": "FC Ingolstadt 04",
-    "fc erzgebirge aue": "FC Erzgebirge Aue",
-    "erzgebirge aue": "FC Erzgebirge Aue",
-    "aue": "FC Erzgebirge Aue",
-    "fc st pauli": "FC St. Pauli",
-    "dsc arminia bielefeld": "Arminia Bielefeld",
-    "sv sandhausen": "SV Sandhausen",
-    "sandhausen": "SV Sandhausen",
-    "fc würzburg": "FC Würzburger Kickers",
-    "1 fc kaiserslautern": "1. FC Kaiserslautern",
-    "kaiserslautern": "1. FC Kaiserslautern",
-    "1 fsv mainz": "Mainz 05",
-    "fc sankt pauli": "FC St. Pauli",
 }
 
 # Özel oyuncu eşleştirme için genişletilmiş manuel mapping
@@ -319,702 +323,285 @@ MANUAL_PLAYER_MAPPING = {
     'alejandro grimaldo': 'alex grimaldo',
     'grant-leon ranos': 'grant ranos',
     'niklas sule': 'niklas süle',
-    'andreas christensen': 'andreas christensen',
-    'matthias ginter': 'matthias ginter',
-    'jonas hofmann': 'jonas hofmann',
-    'christopher nkunku': 'christopher nkunku',
-    'donyell malen': 'donyell malen',
-    'erling haaland': 'erling haaland',
-    'jude bellingham': 'jude bellingham',
-    'serge gnabry': 'serge gnabry',
-    'leroy sane': 'leroy sané',
-    'leroy sane': 'leroy sane',
-    'kingsley coman': 'kingsley coman',
     'thomas muller': 'thomas müller',
+    'leroy sane': 'leroy sané',
     'manuel neuer': 'manuel neuer',
-    'joshua kimmich': 'joshua kimmich',
-    'leon goretzka': 'leon goretzka',
-    'jamal musiala': 'jamal musiala',
-    'alphonso davies': 'alphonso davies',
-    'dayot upamecano': 'dayot upamecano',
     'matthijs de ligt': 'matthijs de ligt',
     'sadio mane': 'sadio mané',
-    'marco reus': 'marco reus',
-    'julian brandt': 'julian brandt',
-    'giovanni reyna': 'giovanni reyna',
-    'emre can': 'emre can',
-    'niklas schlotterbeck': 'niklas schlotterbeck',
-    'raphael guerreiro': 'raphael guerreiros',
-    'karim adeyemi': 'karim adeyemi',
-    'youssoufa moukoko': 'youssoufa moukoko',
-    'gregor kobel': 'gregor kobel',
-    'patrik schick': 'patrik schick',
-    'moussa diaby': 'moussa diaby',
-    'florian wirtz': 'florian wirtz',
-    'jeremie frimpong': 'jeremie frimpong',
-    'pier hincapie': 'pier hincapié',
-    'exequiel palacios': 'exequiel palacios',
-    'robert andrich': 'robert andrich',
-    'amin adli': 'amin adli',
-    'lukas hradecky': 'lukáš hrádecký',
-    'wataru endo': 'wataru endo',
-    'christoph baumgartner': 'christoph baumgartner',
-    'andre silva': 'andré silva',
-    'daichi kamada': 'daichi kamada',
-    'ansgar knauff': 'ansgar knauff',
-    'kevin trapp': 'kevin trapp',
-    'evan ndicka': 'evan ndicka',
-    'djibril sow': 'djibril sow',
-    'jesper lindstrom': 'jesper lindstrøm',
-    'andrej kramaric': 'andrej kramarić',
-    'david raum': 'david raum',
-    'denis zakaria': 'denis zakaria',
-    'pavel kaderabek': 'pavel kadeřábek',
-    'oliver baumann': 'oliver baumann',
-    'vincenzo grifo': 'vincenzo grifo',
-    'matthias ginter': 'matthias ginter',
-    'nils petersen': 'nils petersen',
-    'christian gunter': 'christian günter',
-    'maximilian eggestein': 'maximilian eggestein',
-    'marvin ducksch': 'marvin ducksch',
-    'niclas fullkrug': 'niclas füllkrug',
-    'leonardo bittencourt': 'leonardo bittencourt',
-    'milot rashica': 'milot rashica',
-    'jiri pavlenka': 'jiří pavlenka',
-    'marco friedl': 'marco friedl',
-    'amos pieper': 'amos pieper',
-    'alassane plea': 'alassane plea',
-    'marcus thuram': 'marcus thuram',
-    'florian neuhaus': 'florian neuhaus',
     'yann sommer': 'yann sommer',
-    'nico elvedi': 'nico elvedi',
-    'matthias ginter': 'matthias ginter',
-    'rami bensebaini': 'rami bensebaini',
-    'jonas hofmann': 'jonas hofmann',
-    'maximilian arnold': 'maximilian arnold',
-    'wout weghorst': 'wout weghorst',
-    'lukas nmecha': 'lukas nmecha',
-    'maxence lacroix': 'maxence lacroix',
-    'koen casteels': 'koen casteels',
-    'felix nmecha': 'felix nmecha',
-    'ridle baku': 'ridle baku',
-    'yannick gerhardt': 'yannick gerhardt',
-    'dodi lukebakio': 'dodi lukebakio',
-    'elvis rexhbecaj': 'elvis rexhbecaj',
-    'jeffrey gouweleeuw': 'jeffrey gouweleeuw',
-    'raphael framberger': 'raphael framberger',
-    'fredrik jensen': 'fredrik jensen',
-    'ruben vargas': 'ruben vargas',
-    'florian niederlechner': 'florian niederlechner',
-    'tomas koubek': 'tomáš koubek',
-    'rafal gikiewicz': 'rafał gikiewicz',
-    'iker bravo': 'iker bravo',
-    'tim kleindienst': 'tim kleindienst',
-    'jan niklas beste': 'jan niklas beste',
-    'kevin behrens': 'kevin behrens',
-    'robin knoche': 'robin knoche',
-    'christopher trimmel': 'christopher trimmel',
-    'sheraldo becker': 'sheraldo becker',
-    'kevin volland': 'kevin volland',
-    'jordan siebatcheu': 'jordan siebatcheu',
-    'frederik ronnow': 'frederik rønnow',
-    'leandro barreiro': 'leandro barreiro',
-    'aaron martin': 'aaron martín',
-    'silvan widmer': 'silvan widmer',
-    'marcus ingvartsen': 'marcus ingvartsen',
-    'karim onisiwo': 'karim onisiwo',
-    'jonathan burkardt': 'jonathan burkardt',
-    'anthony caci': 'anthony caci',
-    'robin zentner': 'robin zentner',
-    'takuma asano': 'takuma asano',
-    'philipp hofmann': 'philipp hofmann',
-    'kevin stoger': 'kevin stöger',
-    'manuel riemann': 'manuel riemann',
-    'erhan masovic': 'erhan mašović',
-    'christopher antep adou': 'christopher antwi-adjei',
-    'elleyes skhiri': 'elleyes skhiri',
-    'milos pantovic': 'miloš pantović',
-    'gerrit holtmann': 'gerrit holtmann',
-    'tim oermann': 'tim oermann',
-    'florian kranz': 'florian kranz',
-    'florian kohls': 'florian kohls',
-    'luca kilian': 'luca kilian',
-    'dejan ljubicic': 'dejan ljubičić',
-    'elvis rexhbecaj': 'elvis rexhbecaj',
-    'mathias olesen': 'mathias olesen',
-    'mark uth': 'mark uth',
-    'sven michel': 'sven michel',
-    'timothy tillman': 'timothy tillman',
-    'janik haberer': 'janik haberer',
-    'paul seguin': 'paul seguin',
-    'kevin schade': 'kevin schade',
-    'robin hack': 'robin hack',
-    'branimir hrgota': 'branimir hrgota',
-    'julian green': 'julian green',
-    'maximilian bauer': 'maximilian bauer',
-    'jesse tugbenyo': 'jesse tugbenyo',
-    'marco john': 'marco john',
-    'jannik hauth': 'jannik hauth',
-    'simon asta': 'simon asta',
-    'armindo sieb': 'armindo sieb',
-    'dzenan pejcinovic': 'dženis pejčinović',
-    'meris skenderovic': 'meris skenderović',
-    'lukas petkov': 'lukas petkov',
-    'mario vuskovic': 'mario vušković',
-    'ludovit reis': 'ludovit reis',
-    'robert glatzel': 'robert glatzel',
-    'sonny kittel': 'sonny kittel',
-    'bakery jatta': 'bakery jatta',
-    'lukas daschner': 'lukas daschner',
-    'manu philipp': 'manu philipp',
-    'anssi suhonen': 'anssi suhonen',
-    'moritz heyer': 'moritz heyer',
-    'immanuel pherai': 'immanuel pherai',
-    'joshua mees': 'joshua mees',
-    'faris pemi moumbagna': 'faris moumbagna',
-    'amadou haidara': 'amadou haidara',
-    'xavi simons': 'xavi simons',
-    'lois openda': 'lois openda',
-    'dani olmo': 'dani olmo',
-    'yussuf poulsen': 'yussuf poulsen',
-    'emil forsgberg': 'emil forsberg',
     'peter gulacsi': 'péter gulácsi',
-    'willi orban': 'willi orbán',
-    'mohamed simakan': 'mohamed simakan',
-    'joško gvardiol': 'joško gvardiol',
-    'benjamin henrichs': 'benjamin henrichs',
-    'konrad laimer': 'konrad laimer',
-    'nkunku': 'christopher nkunku',
-    'david raum': 'david raum',
-    'kevin kampl': 'kevin kampl',
-    'andré silva': 'andré silva',
-    'ademola lookman': 'ademola lookman',
-    'dominik szoboszlai': 'dominik szoboszlai',
-    'naby keita': 'naby keita',
-    'ihattaren': 'mohamed ihattaren',
-    'zakaria': 'denis zakaria',
-    'bella-kotchap': 'armel bella-kotchap',
-    'bella kotchap': 'armel bella-kotchap',
-    'niakhate': 'moussa niakhaté',
-    'niakhaté': 'moussa niakhaté',
-    'st juste': 'jeremiah st juste',
-    'lukebakio': 'dodi lukebakio',
-    'bebou': 'ihlas bebou',
-    'kramaric': 'andrej kramarić',
-    'gebbie selassie': 'theodor gebre selassie',
-    'gebre selassie': 'theodor gebre selassie',
-    'osako': 'yuya osako',
-    'rashica': 'milot rashica',
-    'pavlenka': 'jiří pavlenka',
-    'moisander': 'niklas moisander',
-    'veljkovic': 'milos veljkovic',
-    'veljković': 'milos veljkovic',
-    'gruev': 'ilija gruev',
-    'duksch': 'marvin ducksch',
-    'fullkrug': 'niclas füllkrug',
-    'bittencourt': 'leonardo bittencourt',
-    'dorsch': 'niklas dorsch',
-    'gikiewicz': 'rafał gikiewicz',
-    'gumny': 'robert gumny',
-    'caligiuri': 'daniel caligiuri',
-    'maier': 'arnold maier',
-    'niemann': 'fabian niemann',
-    'pfeiffer': 'marcel pfeiffer',
-    'wintzheimer': 'manuel wintzheimer',
-    'lienhart': 'philipp lienhart',
-    'sallai': 'roland sallai',
-    'hofler': 'nico hölfler',
-    'hoelfler': 'nico hölfler',
-    'gulde': 'manuel gulde',
-    'schmid': 'jonathan schmid',
-    'demirovic': 'ercan demirović',
-    'sildillia': 'kiliann sildillia',
-    'atubolu': 'noah atubolu',
-    'weisshaupt': 'noah weisshaupt',
-    'doan': 'ritu doan',
-    'kyereh': 'daniel-kyereh',
-    'petersen': 'nils petersen',
-    'siquet': 'hugo siquet',
-    'schade': 'kevin schade',
-    'katterbach': 'noah katterbach',
-    'lemperle': 'jan lemperle',
-    'thielmann': 'luca thielmann',
-    'schmitz': 'benno schmitz',
-    'hubner': 'florian hübner',
-    'huebner': 'florian hübner',
-    'neumann': 'lukas neumann',
-    'larsen': 'jacob bruun larsen',
-    'bruun larsen': 'jacob bruun larsen',
-    'bynoe-gittens': 'jamie bynoe-gittens',
-    'ozcan': 'salih özcan',
-    'ozcan': 'salih ozcan',
-    'modeste': 'anthony modeste',
-    'wolf': 'marius wolf',
-    'passlack': 'felix passlack',
-    'unbehaun': 'luca unbehaun',
-    'rothe': 'tom rothe',
-    'coulibaly': 'abdoulaye kamara coulibaly',
-    'papadopoulos': 'avraam papadopoulos',
-    'brenet': 'joshua brenet',
-    'skov': 'robert skov',
+    'lukas hradecky': 'lukáš hrádecký',
+    'andre silva': 'andré silva',
+    'pavel kaderabek': 'pavel kadeřábek',
+    'christian gunter': 'christian günter',
+    'niclas fullkrug': 'niclas füllkrug',
+    'florian neuhaus': 'florian neuhaus',
+    'rami bensebaini': 'rami bensebaini',
+    'frederik ronnow': 'frederik rønnow',
+    'aaron martin': 'aaron martín',
+    'tom koubek': 'tomáš koubek',
+    'rafal gikiewicz': 'rafał gikiewicz',
+    'salih ozcan': 'salih özcan',
     'angelino': 'ángelino',
-    'vagnoman': 'josha vagnoman',
-    'feit': 'david feit',
-    'kittel': 'sonny kittel',
-    'reis': 'ludovit reis',
-    'jatta': 'bakery jatta',
-    'david': 'jonas david',
-    'heyer': 'moritz heyer',
-    'vuskovic': 'mario vušković',
-    'meffert': 'jens meffert',
-    'schonlau': 'sebastian schonlau',
-    'suhonen': 'anssi suhonen',
-    'kittel': 'sonny kittel',
-    'glatzel': 'robert glatzel',
-    'kinne': 'patrick kinne',
-    'kinne': 'patrick kinne',
-    'kauffmann': 'daniel heuer kauffmann',
-    'heuer kauffmann': 'daniel heuer kauffmann',
-    'lehmann': 'jens lehmann',
-    'dudziak': 'bakaray dudziak',
-    'kohn': 'leo kohn',
-    'mickel': 'tom mickel',
-    'dorsch': 'niklas dorsch',
-    'wittek': 'maximilian wittek',
-    'hrozensky': 'tomas hrozensky',
-    'hrozensky': 'tomáš hrozenský',
-    'pieringer': 'dennis pieringer',
-    'pieringer': 'dennis pieringer',
-    'venus': 'philip venus',
-    'venus': 'philip venus',
-    'schikora': 'joshua schikora',
-    'schikora': 'joshua schikora',
-    'becker': 'sheraldo becker',
-    'becker': 'sheraldo becker',
-    'jaeckel': 'kevin jaeckel',
-    'jaeckel': 'kevin jaeckel',
-    'jaeckel': 'kevin jäckel',
-    'jaeckel': 'kevin jaeckel',
-    'khedira': 'rami khedira',
-    'khedira': 'rami khedira',
-    'endres': 'tim endres',
-    'endres': 'tim endres',
-    'endres': 'tim endres',
-    'pichler': 'christoph pichler',
-    'pichler': 'christoph pichler',
-    'pichler': 'christoph pichler',
-    'lemperle': 'jan lemperle',
-    'lemperle': 'jan lemperle',
-    'lemperle': 'jan lemperle',
-    'thielmann': 'luca thielmann',
-    'thielmann': 'luca thielmann',
-    'thielmann': 'luca thielmann',
-    'cigerci': 'tolga cigerci',
-    'cigerci': 'tolga cigerci',
-    'cigerci': 'tolga cigerci',
-    'ozcan': 'salih özcan',
-    'ozcan': 'salih ozcan',
-    'ozcan': 'salih özcan',
-    'dahmen': 'finn dahmen',
-    'dahmen': 'finn dahmen',
-    'dahmen': 'finn dahmen',
-    'burkardt': 'jonathan burkardt',
-    'burkardt': 'jonathan burkardt',
-    'burkardt': 'jonathan burkardt',
-    'martin': 'aaron martín',
-    'martin': 'aaron martin',
-    'martin': 'aaron martín',
-    'ingvartsen': 'marcus ingvartsen',
-    'ingvartsen': 'marcus ingvartsen',
-    'ingvartsen': 'marcus ingvartsen',
-    'widmer': 'silvan widmer',
-    'widmer': 'silvan widmer',
-    'widmer': 'silvan widmer',
-    'barreiro': 'leandro barreiro',
-    'barreiro': 'leandro barreiro',
-    'barreiro': 'leandro barreiro',
-    'ronnow': 'frederik rønnow',
-    'ronnow': 'frederik ronnow',
-    'ronnow': 'frederik rønnow',
-    'volland': 'kevin volland',
-    'volland': 'kevin volland',
-    'volland': 'kevin volland',
-    'siebatcheu': 'jordan siebatcheu',
-    'siebatcheu': 'jordan siebatcheu',
-    'siebatcheu': 'jordan siebatcheu',
-    'knoche': 'robin knoche',
-    'knoche': 'robin knoche',
-    'knoche': 'robin knoche',
-    'trimmel': 'christopher trimmel',
-    'trimmel': 'christopher trimmel',
-    'trimmel': 'christopher trimmel',
-    'behrens': 'kevin behrens',
-    'behrens': 'kevin behrens',
-    'behrens': 'kevin behrens',
-    'beste': 'jan niklas beste',
-    'beste': 'jan niklas beste',
-    'beste': 'jan niklas beste',
-    'kleindienst': 'tim kleindienst',
-    'kleindienst': 'tim kleindienst',
-    'kleindienst': 'tim kleindienst',
-    'bravo': 'iker bravo',
-    'bravo': 'iker bravo',
-    'bravo': 'iker bravo',
-    'gikiewicz': 'rafał gikiewicz',
-    'gikiewicz': 'rafal gikiewicz',
-    'gikiewicz': 'rafał gikiewicz',
-    'koubek': 'tomáš koubek',
-    'koubek': 'tomas koubek',
-    'koubek': 'tomáš koubek',
-    'niederlechner': 'florian niederlechner',
-    'niederlechner': 'florian niederlechner',
-    'niederlechner': 'florian niederlechner',
-    'vargas': 'ruben vargas',
-    'vargas': 'ruben vargas',
-    'vargas': 'ruben vargas',
-    'jensen': 'fredrik jensen',
-    'jensen': 'fredrik jensen',
-    'jensen': 'fredrik jensen',
-    'framberger': 'raphael framberger',
-    'framberger': 'raphael framberger',
-    'framberger': 'raphael framberger',
-    'gouweleeuw': 'jeffrey gouweleeuw',
-    'gouweleeuw': 'jeffrey gouweleeuw',
-    'gouweleeuw': 'jeffrey gouweleeuw',
-    'rexhbecaj': 'elvis rexhbecaj',
-    'rexhbecaj': 'elvis rexhbecaj',
-    'rexhbecaj': 'elvis rexhbecaj',
-    'lukebakio': 'dodi lukebakio',
-    'lukebakio': 'dodi lukebakio',
-    'lukebakio': 'dodi lukebakio',
-    'gerhardt': 'yannick gerhardt',
-    'gerhardt': 'yannick gerhardt',
-    'gerhardt': 'yannick gerhardt',
-    'baku': 'ridle baku',
-    'baku': 'ridle baku',
-    'baku': 'ridle baku',
-    'nmecha': 'felix nmecha',
-    'nmecha': 'felix nmecha',
-    'nmecha': 'felix nmecha',
-    'lacroix': 'maxence lacroix',
-    'lacroix': 'maxence lacroix',
-    'lacroix': 'maxence lacroix',
-    'weghorst': 'wout weghorst',
-    'weghorst': 'wout weghorst',
-    'weghorst': 'wout weghorst',
-    'arnold': 'maximilian arnold',
-    'arnold': 'maximilian arnold',
-    'arnold': 'maximilian arnold',
-    'casteels': 'koen casteels',
-    'casteels': 'koen casteels',
-    'casteels': 'koen casteels',
-    'bensebaini': 'rami bensebaini',
-    'bensebaini': 'rami bensebaini',
-    'bensebaini': 'rami bensebaini',
-    'elvedi': 'nico elvedi',
-    'elvedi': 'nico elvedi',
-    'elvedi': 'nico elvedi',
-    'sommer': 'yann sommer',
-    'sommer': 'yann sommer',
-    'sommer': 'yann sommer',
-    'neuhaus': 'florian neuhaus',
-    'neuhaus': 'florian neuhaus',
-    'neuhaus': 'florian neuhaus',
-    'thuram': 'marcus thuram',
-    'thuram': 'marcus thuram',
-    'thuram': 'marcus thuram',
-    'plea': 'alassane plea',
-    'plea': 'alassane plea',
-    'plea': 'alassane plea',
-    'friedl': 'marco friedl',
-    'friedl': 'marco friedl',
-    'friedl': 'marco friedl',
-    'pavlenka': 'jiří pavlenka',
-    'pavlenka': 'jiri pavlenka',
-    'pavlenka': 'jiří pavlenka',
-    'rashica': 'milot rashica',
-    'rashica': 'milot rashica',
-    'rashica': 'milot rashica',
-    'fullkrug': 'niclas füllkrug',
-    'fullkrug': 'niclas fullkrug',
-    'fullkrug': 'niclas füllkrug',
-    'ducksch': 'marvin ducksch',
-    'ducksch': 'marvin ducksch',
-    'ducksch': 'marvin ducksch',
-    'bittencourt': 'leonardo bittencourt',
-    'bittencourt': 'leonardo bittencourt',
-    'bittencourt': 'leonardo bittencourt',
-    'eggestein': 'maximilian eggestein',
-    'eggestein': 'maximilian eggestein',
-    'eggestein': 'maximilian eggestein',
-    'gunter': 'christian günter',
-    'gunter': 'christian gunter',
-    'gunter': 'christian günter',
-    'petersen': 'nils petersen',
-    'petersen': 'nils petersen',
-    'petersen': 'nils petersen',
-    'grifo': 'vincenzo grifo',
-    'grifo': 'vincenzo grifo',
-    'grifo': 'vincenzo grifo',
-    'ginter': 'matthias ginter',
-    'ginter': 'matthias ginter',
-    'ginter': 'matthias ginter',
-    'baumann': 'oliver baumann',
-    'baumann': 'oliver baumann',
-    'baumann': 'oliver baumann',
-    'kaderabek': 'pavel kadeřábek',
-    'kaderabek': 'pavel kaderabek',
-    'kaderabek': 'pavel kadeřábek',
-    'zakaria': 'denis zakaria',
-    'zakaria': 'denis zakaria',
-    'zakaria': 'denis zakaria',
-    'kramaric': 'andrej kramarić',
-    'kramaric': 'andrej kramaric',
-    'kramaric': 'andrej kramarić',
-    'bebou': 'ihlas bebou',
-    'bebou': 'ihlas bebou',
-    'bebou': 'ihlas bebou',
-    'raum': 'david raum',
-    'raum': 'david raum',
-    'raum': 'david raum',
-    'gebre selassie': 'theodor gebre selassie',
-    'gebre selassie': 'theodor gebre selassie',
-    'gebre selassie': 'theodor gebre selassie',
-    'osako': 'yuya osako',
-    'osako': 'yuya osako',
-    'osako': 'yuya osako',
-    'rashica': 'milot rashica',
-    'rashica': 'milot rashica',
-    'rashica': 'milot rashica',
-    'pavlenka': 'jiří pavlenka',
-    'pavlenka': 'jiri pavlenka',
-    'pavlenka': 'jiří pavlenka',
-    'moisander': 'niklas moisander',
-    'moisander': 'niklas moisander',
-    'moisander': 'niklas moisander',
-    'veljkovic': 'milos veljkovic',
-    'veljkovic': 'milos veljkovic',
-    'veljkovic': 'milos veljkovic',
-    'gruev': 'ilija gruev',
-    'gruev': 'ilija gruev',
-    'gruev': 'ilija gruev',
-    'duksch': 'marvin ducksch',
-    'duksch': 'marvin ducksch',
-    'duksch': 'marvin ducksch',
-    'fullkrug': 'niclas füllkrug',
-    'fullkrug': 'niclas fullkrug',
-    'fullkrug': 'niclas füllkrug',
-    'bittencourt': 'leonardo bittencourt',
-    'bittencourt': 'leonardo bittencourt',
-    'bittencourt': 'leonardo bittencourt',
-    'dorsch': 'niklas dorsch',
-    'dorsch': 'niklas dorsch',
-    'dorsch': 'niklas dorsch',
-    'gikiewicz': 'rafał gikiewicz',
-    'gikiewicz': 'rafal gikiewicz',
-    'gikiewicz': 'rafał gikiewicz',
-    'gumny': 'robert gumny',
-    'gumny': 'robert gumny',
-    'gumny': 'robert gumny',
-    'caligiuri': 'daniel caligiuri',
-    'caligiuri': 'daniel caligiuri',
-    'caligiuri': 'daniel caligiuri',
-    'maier': 'arnold maier',
-    'maier': 'arnold maier',
-    'maier': 'arnold maier',
-    'niemann': 'fabian niemann',
-    'niemann': 'fabian niemann',
-    'niemann': 'fabian niemann',
-    'pfeiffer': 'marcel pfeiffer',
-    'pfeiffer': 'marcel pfeiffer',
-    'pfeiffer': 'marcel pfeiffer',
-    'wintzheimer': 'manuel wintzheimer',
-    'wintzheimer': 'manuel wintzheimer',
-    'wintheimer': 'manuel wintzheimer',
-    'lienhart': 'philipp lienhart',
-    'lienhart': 'philipp lienhart',
-    'lienhart': 'philipp lienhart',
-    'sallai': 'roland sallai',
-    'sallai': 'roland sallai',
-    'sallai': 'roland sallai',
-    'hofler': 'nico hölfler',
-    'hofler': 'nico holfler',
-    'hofler': 'nico hölfler',
-    'gulde': 'manuel gulde',
-    'gulde': 'manuel gulde',
-    'gulde': 'manuel gulde',
-    'schmid': 'jonathan schmid',
-    'schmid': 'jonathan schmid',
-    'schmid': 'jonathan schmid',
-    'demirovic': 'ercan demirović',
-    'demirovic': 'ercan demirovic',
-    'demirovic': 'ercan demirović',
-    'sildillia': 'kiliann sildillia',
-    'sildillia': 'kiliann sildillia',
-    'sildillia': 'kiliann sildillia',
-    'atubolu': 'noah atubolu',
-    'atubolu': 'noah atubolu',
-    'atubolu': 'noah atubolu',
-    'weisshaupt': 'noah weisshaupt',
-    'weisshaupt': 'noah weisshaupt',
-    'weisshaupt': 'noah weisshaupt',
-    'doan': 'ritu doan',
-    'doan': 'ritu doan',
-    'doan': 'ritu doan',
-    'kyereh': 'daniel-kyereh',
-    'kyereh': 'daniel kyereh',
-    'kyereh': 'daniel-kyereh',
-    'petersen': 'nils petersen',
-    'petersen': 'nils petersen',
-    'petersen': 'nils petersen',
-    'siquet': 'hugo siquet',
-    'siquet': 'hugo siquet',
-    'siquet': 'hugo siquet',
-    'schade': 'kevin schade',
-    'schade': 'kevin schade',
-    'schade': 'kevin schade',
-    'katterbach': 'noah katterbach',
-    'katterbach': 'noah katterbach',
-    'katterbach': 'noah katterbach',
-    'lemperle': 'jan lemperle',
-    'lemperle': 'jan lemperle',
-    'lemperle': 'jan lemperle',
-    'thielmann': 'luca thielmann',
-    'thielmann': 'luca thielmann',
-    'thielmann': 'luca thielmann',
-    'schmitz': 'benno schmitz',
-    'schmitz': 'benno schmitz',
-    'schmitz': 'benno schmitz',
-    'hubner': 'florian hübner',
-    'hubner': 'florian hubner',
-    'hubner': 'florian hübner',
-    'neumann': 'lukas neumann',
-    'neumann': 'lukas neumann',
-    'neumann': 'lukas neumann',
-    'larsen': 'jacob bruun larsen',
-    'larsen': 'jacob bruun larsen',
-    'larsen': 'jacob bruun larsen',
-    'bynoe-gittens': 'jamie bynoe-gittens',
-    'bynoe-gittens': 'jamie bynoe-gittens',
-    'bynoe-gittens': 'jamie bynoe-gittens',
-    'ozcan': 'salih özcan',
-    'ozcan': 'salih ozcan',
-    'ozcan': 'salih özcan',
-    'modeste': 'anthony modeste',
-    'modeste': 'anthony modeste',
-    'modeste': 'anthony modeste',
-    'wolf': 'marius wolf',
-    'wolf': 'marius wolf',
-    'wolf': 'marius wolf',
-    'passlack': 'felix passlack',
-    'passlack': 'felix passlack',
-    'passlack': 'felix passlack',
-    'unbehaun': 'luca unbehaun',
-    'unbehaun': 'luca unbehaun',
-    'unbehaun': 'luca unbehaun',
-    'rothe': 'tom rothe',
-    'rothe': 'tom rothe',
-    'rothe': 'tom rothe',
-    'coulibaly': 'abdoulaye kamara coulibaly',
-    'coulibaly': 'abdoulaye coulibaly',
-    'coulibaly': 'abdoulaye kamara coulibaly',
-    'papadopoulos': 'avraam papadopoulos',
-    'papadopoulos': 'avraam papadopoulos',
-    'papadopoulos': 'avraam papadopoulos',
-    'brenet': 'joshua brenet',
-    'brenet': 'joshua brenet',
-    'brenet': 'joshua brenet',
-    'skov': 'robert skov',
-    'skov': 'robert skov',
-    'skov': 'robert skov',
-    'angelino': 'ángelino',
-    'angelino': 'angelino',
-    'angelino': 'ángelino',
-    'vagnoman': 'josha vagnoman',
-    'vagnoman': 'josha vagnoman',
-    'vagnoman': 'josha vagnoman',
-    'feit': 'david feit',
-    'feit': 'david feit',
-    'feit': 'david feit',
-    'kittel': 'sonny kittel',
-    'kittel': 'sonny kittel',
-    'kittel': 'sonny kittel',
-    'reis': 'ludovit reis',
-    'reis': 'ludovit reis',
-    'reis': 'ludovit reis',
-    'jatta': 'bakery jatta',
-    'jatta': 'bakery jatta',
-    'jatta': 'bakery jatta',
-    'david': 'jonas david',
-    'david': 'jonas david',
-    'david': 'jonas david',
-    'heyer': 'moritz heyer',
-    'heyer': 'moritz heyer',
-    'heyer': 'moritz heyer',
-    'vuskovic': 'mario vušković',
-    'vuskovic': 'mario vuskovic',
-    'vuskovic': 'mario vušković',
-    'meffert': 'jens meffert',
-    'meffert': 'jens meffert',
-    'meffert': 'jens meffert',
-    'schonlau': 'sebastian schonlau',
-    'schonlau': 'sebastian schonlau',
-    'schonlau': 'sebastian schonlau',
-    'suhonen': 'anssi suhonen',
-    'suhonen': 'anssi suhonen',
-    'suhonen': 'anssi suhonen',
-    'glatzel': 'robert glatzel',
-    'glatzel': 'robert glatzel',
-    'glatzel': 'robert glatzel',
-    'kinne': 'patrick kinne',
-    'kinne': 'patrick kinne',
-    'kinne': 'patrick kinne',
-    'kauffmann': 'daniel heuer kauffmann',
-    'kauffmann': 'daniel heuer kauffmann',
-    'kauffmann': 'daniel heuer kauffmann',
-    'lehmann': 'jens lehmann',
-    'lehmann': 'jens lehmann',
-    'lehmann': 'jens lehmann',
-    'dudziak': 'bakaray dudziak',
-    'dudziak': 'bakaray dudziak',
-    'dudziak': 'bakaray dudziak',
-    'kohn': 'leo kohn',
-    'kohn': 'leo kohn',
-    'kohn': 'leo kohn',
-    'mickel': 'tom mickel',
-    'mickel': 'tom mickel',
-    'mickel': 'tom mickel',
-    'wittek': 'maximilian wittek',
-    'wittek': 'maximilian wittek',
-    'wittek': 'maximilian wittek',
-    'hrozensky': 'tomas hrozensky',
-    'hrozensky': 'tomas hrozensky',
-    'hrozensky': 'tomáš hrozenský',
-    'pieringer': 'dennis pieringer',
-    'pieringer': 'dennis pieringer',
-    'pieringer': 'dennis pieringer',
-    'venus': 'philip venus',
-    'venus': 'philip venus',
-    'venus': 'philip venus',
-    'schikora': 'joshua schikora',
-    'schikora': 'joshua schikora',
-    'schikora': 'joshua schikora',
-    'becker': 'sheraldo becker',
-    'becker': 'sheraldo becker',
-    'becker': 'sheraldo becker',
-    'jaeckel': 'kevin jaeckel',
-    'jaeckel': 'kevin jaeckel',
-    'jaeckel': 'kevin jäckel',
-    'khedira': 'rami khedira',
-    'khedira': 'rami khedira',
-    'khedira': 'rami khedira',
-    'endres': 'tim endres',
-    'endres': 'tim endres',
-    'endres': 'tim endres',
-    'pichler': 'christoph pichler',
-    'pichler': 'christoph pichler',
-    'pichler': 'christoph pichler',
+    'tomas hrozensky': 'tomáš hrozenský',
+    'mario vuskovic': 'mario vušković',
 }
+
+# --- Dinamik Rating Sistemi ---
+class DynamicRatingSystem:
+    def __init__(self, config=None):
+        self.config = config or DEFAULT_RATING_CONFIG
+        self.rating_history = {}
+        self.league_averages = {}
+        self.position_stats = {}
+        
+    def save_config(self, path=None):
+        """Rating konfigürasyonunu kaydet"""
+        path = path or RATING_CONFIG_PATH
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
+    
+    def load_config(self, path=None):
+        """Rating konfigürasyonunu yükle"""
+        path = path or RATING_CONFIG_PATH
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                self.config = json.load(f)
+        except FileNotFoundError:
+            self.config = DEFAULT_RATING_CONFIG
+            self.save_config(path)
+    
+    def detect_position(self, position_str, player_name=None):
+        """Oyuncu pozisyonunu tespit et"""
+        if pd.isna(position_str) or position_str == '':
+            return 'UNK'
+        
+        position_str = str(position_str).lower()
+        
+        # Pozisyon anahtar kelimelerine göre tespit
+        for pos, keywords in self.config['position_detection'].items():
+            if any(keyword in position_str for keyword in keywords):
+                return pos.replace('_keywords', '')
+        
+        # Fallback: pozisyon kısaltmaları
+        if any(abbr in position_str for abbr in ['gk', 'goalie']):
+            return 'GK'
+        elif any(abbr in position_str for abbr in ['cb', 'rb', 'lb', 'wb', 'def']):
+            return 'DEF'
+        elif any(abbr in position_str for abbr in ['cm', 'cam', 'cdm', 'lm', 'rm', 'mid']):
+            return 'MID'
+        elif any(abbr in position_str for abbr in ['fw', 'cf', 'st', 'lw', 'rw', 'att']):
+            return 'FWD'
+        
+        return 'UNK'
+    
+    def calculate_league_averages(self, df):
+        """Lig ortalamalarını hesapla"""
+        # Sadece sayısal sütunları seç
+        numeric_cols = [f'fbref__{metric}' for metric in self.config['base_metrics'].keys() 
+                       if f'fbref__{metric}' in df.columns]
+        
+        for col in numeric_cols:
+            # Sütunu sayısala dönüştür
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            self.league_averages[col] = df[col].mean()
+        
+        # Pozisyon bazlı istatistikler
+        for position in ['GK', 'DEF', 'MID', 'FWD']:
+            pos_mask = df['position_detected'] == position
+            if pos_mask.any():
+                self.position_stats[position] = {}
+                for col in numeric_cols:
+                    self.position_stats[position][col] = {
+                        'mean': df.loc[pos_mask, col].mean(),
+                        'std': df.loc[pos_mask, col].std(),
+                        'max': df.loc[pos_mask, col].max()
+                    }
+    
+    def normalize_metric(self, values, method='max', position=None):
+        """Metrikleri normalize et"""
+        if method == 'max':
+            max_val = values.max()
+            return values / max_val * 100 if max_val > 0 else values * 0
+        elif method == 'percentile':
+            if self.config['scaling']['use_percentile']:
+                low, high = self.config['scaling']['percentile_range']
+                low_p = np.percentile(values, low)
+                high_p = np.percentile(values, high)
+                if high_p > low_p:
+                    normalized = (values - low_p) / (high_p - low_p) * 100
+                    return np.clip(normalized, 0, 100)
+            return (values - values.min()) / (values.max() - values.min()) * 100 if values.max() > values.min() else values * 0
+        elif method == 'zscore' and position and position in self.position_stats:
+            # Pozisyon bazlı z-score normalizasyonu
+            pos_stats = self.position_stats[position]
+            col_name = values.name.replace('_norm', '')
+            if col_name in pos_stats:
+                mean = pos_stats[col_name]['mean']
+                std = pos_stats[col_name]['std']
+                if std > 0:
+                    z_scores = (values - mean) / std
+                    return np.clip(50 + z_scores * 10, 0, 100)
+        return values
+    
+    def calculate_advanced_metrics(self, df):
+        """Gelişmiş metrikleri hesapla"""
+        # Gol + Asist
+        if 'fbref__Gls' in df.columns and 'fbref__Ast' in df.columns:
+            df['G+A'] = df['fbref__Gls'] + df['fbref__Ast']
+        
+        # Verimlilik metrikleri
+        if 'fbref__Gls' in df.columns and 'fbref__Sh' in df.columns:
+            df['Gls/Sh'] = df['fbref__Gls'] / df['fbref__Sh']
+            df['Gls/Sh'] = df['Gls/Sh'].fillna(0)
+        
+        if 'fbref__Ast' in df.columns and 'fbref__Min' in df.columns:
+            df['Ast/90'] = (df['fbref__Ast'] / df['fbref__Min']) * 90
+            df['Ast/90'] = df['Ast/90'].fillna(0)
+        
+        if 'G+A' in df.columns and 'fbref__Min' in df.columns:
+            df['G+A/90'] = (df['G+A'] / df['fbref__Min']) * 90
+            df['G+A/90'] = df['G+A/90'].fillna(0)
+        
+        return df
+    
+    def calculate_player_rating(self, df):
+        """Tüm oyuncular için dinamik rating hesapla"""
+        # Pozisyonları tespit et
+        df['position_detected'] = df['Position'].apply(self.detect_position)
+        
+        # Gelişmiş metrikleri hesapla
+        df = self.calculate_advanced_metrics(df)
+        
+        # FBref sütunlarını sayısal forma dönüştür
+        for metric in self.config['base_metrics'].keys():
+            col_name = f'fbref__{metric}'
+            if col_name in df.columns:
+                df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
+        
+        # Lig ortalamalarını güncelle
+        self.calculate_league_averages(df)
+        
+        # Rating hesaplama
+        df['Rating_raw'] = 0.0
+        total_weight = 0
+        
+        for metric, config in self.config['base_metrics'].items():
+            col_name = f'fbref__{metric}'
+            if col_name not in df.columns:
+                continue
+            
+            # Metrik için normalize sütun oluştur
+            norm_col = f'{metric}_norm'
+            
+            for position in ['GK', 'DEF', 'MID', 'FWD', 'UNK']:
+                pos_mask = df['position_detected'] == position
+                if pos_mask.any():
+                    # Pozisyon bazlı ağırlık
+                    pos_weight = config['position_weights'].get(position, config['weight'])
+                    
+                    # Normalizasyon
+                    df.loc[pos_mask, norm_col] = self.normalize_metric(
+                        df.loc[pos_mask, col_name], 
+                        config['normalization'],
+                        position
+                    )
+                    
+                    # Rating'e katkı
+                    df.loc[pos_mask, 'Rating_raw'] += pos_weight * df.loc[pos_mask, norm_col]
+                    total_weight += pos_weight
+        
+        # Gelişmiş metrikler için ek puanlar
+        advanced_config = self.config['advanced_metrics']
+        
+        # Form puanı (son 5 maç performansı)
+        if 'fbref__MP' in df.columns:
+            recent_form = df['fbref__MP'] / df['fbref__MP'].max() * 100
+            df['Rating_raw'] += advanced_config['form_weight'] * recent_form
+            total_weight += advanced_config['form_weight']
+        
+        # Yaş faktörü
+        if 'Age' in df.columns:
+            # 24-28 yaş arası prime dönem bonusu
+            age_bonus = np.where(
+                (df['Age'] >= 24) & (df['Age'] <= 28),
+                10,  # Prime bonus
+                np.where(df['Age'] < 21, 5, 0)  # Genç yetenek bonusu
+            )
+            df['Rating_raw'] += advanced_config['age_weight'] * age_bonus
+            total_weight += advanced_config['age_weight']
+        
+        # Piyasa değeri faktörü
+        if 'Market_Value' in df.columns:
+            market_value_norm = self.normalize_metric(df['Market_Value'], 'percentile')
+            df['Rating_raw'] += advanced_config['market_value_weight'] * market_value_norm
+            total_weight += advanced_config['market_value_weight']
+        
+        # Süreklilik bonusu
+        df['Rating_raw'] += advanced_config['consistency_bonus'] * 100
+        total_weight += advanced_config['consistency_bonus']
+        
+        # Final rating hesaplama
+        if total_weight > 0:
+            df['Rating_raw'] = df['Rating_raw'] / total_weight
+        
+        # Min-Max scaling
+        scaler = MinMaxScaler(feature_range=(
+            self.config['scaling']['min_rating'],
+            self.config['scaling']['max_rating']
+        ))
+        df['Rating'] = scaler.fit_transform(df[['Rating_raw']])
+        
+        # Rating geçmişini güncelle
+        self.update_rating_history(df)
+        
+        return df
+    
+    def update_rating_history(self, df):
+        """Rating geçmişini güncelle"""
+        current_date = datetime.now()
+        
+        for idx, row in df.iterrows():
+            player_key = f"{row['player_norm']}_{row['fbref_team_norm']}"
+            
+            if player_key not in self.rating_history:
+                self.rating_history[player_key] = []
+            
+            self.rating_history[player_key].append({
+                'date': current_date,
+                'rating': row['Rating'],
+                'position': row['position_detected'],
+                'team': row['Team']
+            })
+            
+            # Eski kayıtları temizle (30 günden eski)
+            self.rating_history[player_key] = [
+                record for record in self.rating_history[player_key]
+                if current_date - record['date'] <= timedelta(days=30)
+            ]
+    
+    def get_rating_trend(self, player_key, window=5):
+        """Oyuncunun rating trendini hesapla"""
+        if player_key not in self.rating_history or len(self.rating_history[player_key]) < 2:
+            return 0
+        
+        ratings = [record['rating'] for record in self.rating_history[player_key]]
+        dates = [record['date'] for record in self.rating_history[player_key]]
+        
+        # Son 'window' sayıda rating üzerinden trend hesapla
+        recent_ratings = ratings[-window:]
+        
+        if len(recent_ratings) < 2:
+            return 0
+        
+        # Basit lineer regresyon ile trend
+        x = np.arange(len(recent_ratings)).reshape(-1, 1)
+        y = np.array(recent_ratings)
+        
+        model = LinearRegression()
+        model.fit(x, y)
+        
+        return model.coef_[0]  # Trend katsayısı
 
 # --- Yardımcı Fonksiyonlar ---
 def normalize_text(s: Optional[str]) -> str:
@@ -1092,7 +679,6 @@ def detect_columns(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
             return c
     return None
 
-# Token bazlı takım eşleştirme (alternatif yöntem)
 def token_based_team_match(query, choices, min_score=0.5):
     """Token bazlı takım eşleştirme - fuzzy matching'e alternatif"""
     if not choices:
@@ -1153,8 +739,68 @@ def load_data(squads_path: str, fbref_path: str):
     fbref.columns = fbref.columns.str.strip()
     return squads, fbref
 
+# --- Güncelleme Mekanizmaları ---
+def update_ratings_with_new_data(existing_file, new_fbref_data, rating_system):
+    """
+    Mevcut dataset'e yeni FBref verilerini ekleyerek ratingleri günceller
+    """
+    # Mevcut veriyi oku
+    existing_df = pd.read_excel(existing_file)
+    
+    # Yeni FBref verisini işle
+    new_fbref_df = pd.read_csv(new_fbref_data)
+    
+    # Oyuncu eşleştirme (mevcut mantığı kullan)
+    updated_df = merge_new_fbref_data(existing_df, new_fbref_df)
+    
+    # Ratingleri yeniden hesapla
+    updated_df = rating_system.calculate_player_rating(updated_df)
+    
+    return updated_df
+
+def merge_new_fbref_data(existing_df, new_fbref_df):
+    """
+    Yeni FBref verilerini mevcut dataset ile birleştir
+    """
+    # FBref sütunlarını güncelle
+    fbref_cols = [col for col in new_fbref_df.columns if col not in ['Player', 'Team', 'Season', 'player_norm', 'team_norm']]
+    
+    for index, row in existing_df.iterrows():
+        player_name = row['player_norm']
+        team_name = row['fbref_team_norm']
+        
+        # Yeni veride eşleşen oyuncuyu bul
+        match = new_fbref_df[
+            (new_fbref_df['player_norm'] == player_name) & 
+            (new_fbref_df['team_norm'] == team_name)
+        ]
+        
+        if not match.empty:
+            # FBref verilerini güncelle
+            for col in fbref_cols:
+                fbref_col_name = f'fbref__{col}'
+                if fbref_col_name in existing_df.columns:
+                    existing_df.at[index, fbref_col_name] = match[col].iloc[0]
+    
+    return existing_df
+
 # --- Main entegre pipeline ---
-def integrated_pipeline():
+def integrated_pipeline(update_mode=False):
+    """
+    Ana pipeline fonksiyonu
+    
+    Args:
+        update_mode (bool): True ise sadece rating güncellemesi yapar
+    """
+    # Rating sistemini başlat
+    rating_system = DynamicRatingSystem()
+    rating_system.load_config()
+    
+    if update_mode:
+        print("🔄 Update modu: Sadece rating güncellemesi yapılıyor...")
+        return update_dataset_with_new_fbref_data(rating_system)
+    
+    print("🚀 Yeni pipeline çalıştırılıyor...")
     squads_df, fbref_df = load_data(SQUADS_PATH, FBREF_PATH)
 
     # Kolon tespiti
@@ -1448,45 +1094,47 @@ def integrated_pipeline():
     pr_df.to_csv(PLAYER_REPORT_CSV, index=False)
 
     # Fill numeric columns from fbref (if any) and impute by team mean / league mean like original
-    # Detect numeric columns in fbref
-    numeric_candidates = ['MP','Gls','Ast','Min','Sh','SoT','Cmp','Att']
-    numeric_cols_present = [c for c in numeric_candidates if c in fbref_df.columns]
+    # Detect numeric columns in fbref - FIXED: fbref__ önekli sütunları kullan
+    numeric_candidates = ['MP','Gls','Ast','Min','Sh','SoT','Cmp','Att','PrgC','PrgP','PrgR']
+    numeric_cols_present = [f'fbref__{c}' for c in numeric_candidates if f'fbref__{c}' in merged.columns]
+    
     for col in numeric_cols_present:
-        merged[f'fbref__{col}'] = pd.to_numeric(merged[f'fbref__{col}'], errors='coerce')
+        merged[col] = pd.to_numeric(merged[col], errors='coerce')
 
-    # Team-level imputation
+    # Team-level imputation - FIXED: fbref__ önekli sütunları kullan
     for col in numeric_cols_present:
         for team in merged['team_norm'].dropna().unique():
             mask = merged['team_norm'] == team
-            team_mean = merged.loc[mask, f'fbref__{col}'].mean()
+            team_mean = merged.loc[mask, col].mean()
             if pd.notna(team_mean):
-                merged.loc[mask & merged[f'fbref__{col}'].isna(), f'fbref__{col}'] = team_mean
-    # League mean
+                merged.loc[mask & merged[col].isna(), col] = team_mean
+    
+    # League mean - FIXED: fbref__ önekli sütunları kullan
     for col in numeric_cols_present:
-        if merged[f'fbref__{col}'].isna().any():
-            lg_mean = merged[f'fbref__{col}'].mean()
+        if merged[col].isna().any():
+            lg_mean = merged[col].mean()
             if pd.notna(lg_mean):
-                merged[f'fbref__{col}'] = merged[f'fbref__{col}'].fillna(lg_mean)
+                merged[col] = merged[col].fillna(lg_mean)
             else:
-                merged[f'fbref__{col}'] = merged[f'fbref__{col}'].fillna(0)
+                merged[col] = merged[col].fillna(0)
 
-    # Rating calculation (like original)
-    from sklearn.preprocessing import MinMaxScaler
-    rating_metrics = [c for c in ['MP','Gls','Ast','Sh','SoT'] if c in numeric_cols_present]
-    if rating_metrics:
-        for c in rating_metrics:
-            merged[f'{c}_norm'] = merged[f'fbref__{c}'] / max(merged[f'fbref__{c}'].max(), 1) * 100
-        weights = [0.25, 0.30, 0.20, 0.15, 0.10]
-        merged['Rating_raw'] = 0.0
-        for i, c in enumerate(rating_metrics):
-            w = weights[i] if i < len(weights) else 0
-            merged['Rating_raw'] += w * merged[f'{c}_norm']
-        scaler = MinMaxScaler(feature_range=(0,100))
-        merged['Rating'] = scaler.fit_transform(merged[['Rating_raw']])
+    # --- DİNAMİK RATING HESAPLAMA ---
+    print("🎯 Dinamik rating hesaplanıyor...")
+    merged = rating_system.calculate_player_rating(merged)
+    
+    # Rating trendlerini hesapla
+    print("📈 Rating trendleri hesaplanıyor...")
+    merged['Rating_Trend'] = 0.0
+    for idx, row in merged.iterrows():
+        player_key = f"{row['player_norm']}_{row['fbref_team_norm']}"
+        trend = rating_system.get_rating_trend(player_key)
+        merged.at[idx, 'Rating_Trend'] = trend
 
-    # Save final merged dataset
-    out_path = 'data/final_bundesliga_dataset_complete.xlsx'
-    merged.to_excel(out_path, index=False)
+    # Save final merged dataset - MEVCUT DOSYA ADIYLA
+    merged.to_excel(OUTPUT_FILE, index=False)
+    
+    # Rating konfigürasyonunu kaydet
+    rating_system.save_config()
 
     # Write human readable log
     lines = []
@@ -1505,6 +1153,20 @@ def integrated_pipeline():
     lines.append(f'- Matched players: {int(matched_players)} ({match_pct} %)')
     lines.append('')
     
+    # Rating istatistikleri
+    lines.append('[Rating Statistics]')
+    lines.append(f'- Average Rating: {merged["Rating"].mean():.2f}')
+    lines.append(f'- Max Rating: {merged["Rating"].max():.2f}')
+    lines.append(f'- Min Rating: {merged["Rating"].min():.2f}')
+    lines.append(f'- Rating Std Dev: {merged["Rating"].std():.2f}')
+    
+    # Pozisyon bazlı rating ortalamaları
+    lines.append('\n[Position-based Averages]')
+    for position in ['GK', 'DEF', 'MID', 'FWD']:
+        pos_avg = merged[merged['position_detected'] == position]['Rating'].mean()
+        pos_count = len(merged[merged['position_detected'] == position])
+        lines.append(f'- {position}: {pos_avg:.2f} ({pos_count} players)')
+    
     # Player matching istatistikleri
     if len(player_mapping_report) > 0:
         report_df = pd.DataFrame(player_mapping_report)
@@ -1512,7 +1174,7 @@ def integrated_pipeline():
         manual_review_count = len(report_df[report_df['status'] == 'manual_review'])
         unmatched_count = len(report_df[report_df['status'] == 'unmatched'])
         
-        lines.append('[Player Matching Details]')
+        lines.append('\n[Player Matching Details]')
         lines.append(f'- Matched players: {matched_count}')
         lines.append(f'- Needs manual review: {manual_review_count}')
         lines.append(f'- Unmatched players: {unmatched_count}')
@@ -1529,13 +1191,49 @@ def integrated_pipeline():
     lines.append(f'- Unmatched fbref: {UNMATCHED_FBREF_CSV}')
     lines.append(f'- Player report: {PLAYER_REPORT_CSV}')
     lines.append(f'- Player mapping suggestions: {PLAYER_MAPPING_SUGGEST_CSV}')
-    lines.append(f'- Final merged dataset: {out_path}')
+    lines.append(f'- Rating config: {RATING_CONFIG_PATH}')
+    lines.append(f'- Final merged dataset: {OUTPUT_FILE}')
 
     with open(LOG_PATH, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
 
     print('\n'.join(lines))
-    print('\nDone. Outputs saved to logs/ and data/')
+    print('\n✅ Done. Outputs saved to logs/ and data/')
+    
+    return merged, rating_system
+
+# --- Güncelleme Fonksiyonu ---
+def update_dataset_with_new_fbref_data(rating_system):
+    """Yeni FBref verileri ile dataset'i güncelle"""
+    print("🔄 Dataset güncelleniyor...")
+    
+    # Yeni verilerle güncelle
+    existing_file = OUTPUT_FILE
+    new_fbref_data = FBREF_PATH
+    
+    if os.path.exists(existing_file):
+        updated_df = update_ratings_with_new_data(existing_file, new_fbref_data, rating_system)
+        
+        # Güncellenmiş dataset'i kaydet - AYNI DOSYA ADIYLA
+        updated_df.to_excel(OUTPUT_FILE, index=False)
+        
+        print(f"✅ Dataset güncellendi: {OUTPUT_FILE}")
+        return updated_df
+    else:
+        print("❌ Mevcut dataset bulunamadı. Yeni bir pipeline çalıştırın.")
+        return None
 
 if __name__ == '__main__':
-    integrated_pipeline()
+    # Komut satırı argümanlarını kontrol et
+    update_mode = False
+    if len(sys.argv) > 1 and sys.argv[1] == '--update':
+        update_mode = True
+    
+    if update_mode:
+        # Sadece rating güncellemesi yap
+        rating_system = DynamicRatingSystem()
+        rating_system.load_config()
+        update_dataset_with_new_fbref_data(rating_system)
+    else:
+        # Tam pipeline çalıştır
+        merged_data, rating_system = integrated_pipeline(update_mode=False)

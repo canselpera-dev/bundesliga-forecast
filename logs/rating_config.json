@@ -1,0 +1,164 @@
+{
+  "base_metrics": {
+    "MP": {
+      "weight": 0.1,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.15,
+        "DEF": 0.12,
+        "MID": 0.08,
+        "FWD": 0.05
+      }
+    },
+    "Gls": {
+      "weight": 0.2,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.05,
+        "DEF": 0.1,
+        "MID": 0.15,
+        "FWD": 0.25
+      }
+    },
+    "Ast": {
+      "weight": 0.15,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.05,
+        "DEF": 0.08,
+        "MID": 0.18,
+        "FWD": 0.15
+      }
+    },
+    "Sh": {
+      "weight": 0.08,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.02,
+        "DEF": 0.05,
+        "MID": 0.08,
+        "FWD": 0.12
+      }
+    },
+    "SoT": {
+      "weight": 0.07,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.02,
+        "DEF": 0.04,
+        "MID": 0.06,
+        "FWD": 0.1
+      }
+    },
+    "Cmp": {
+      "weight": 0.06,
+      "normalization": "percentile",
+      "position_weights": {
+        "GK": 0.1,
+        "DEF": 0.08,
+        "MID": 0.07,
+        "FWD": 0.03
+      }
+    },
+    "PrgC": {
+      "weight": 0.08,
+      "normalization": "percentile",
+      "position_weights": {
+        "GK": 0.05,
+        "DEF": 0.1,
+        "MID": 0.09,
+        "FWD": 0.06
+      }
+    },
+    "PrgP": {
+      "weight": 0.08,
+      "normalization": "percentile",
+      "position_weights": {
+        "GK": 0.03,
+        "DEF": 0.06,
+        "MID": 0.1,
+        "FWD": 0.08
+      }
+    },
+    "PrgR": {
+      "weight": 0.06,
+      "normalization": "percentile",
+      "position_weights": {
+        "GK": 0.02,
+        "DEF": 0.05,
+        "MID": 0.07,
+        "FWD": 0.08
+      }
+    },
+    "Min": {
+      "weight": 0.05,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.08,
+        "DEF": 0.06,
+        "MID": 0.05,
+        "FWD": 0.04
+      }
+    },
+    "G+A": {
+      "weight": 0.07,
+      "normalization": "max",
+      "position_weights": {
+        "GK": 0.03,
+        "DEF": 0.06,
+        "MID": 0.08,
+        "FWD": 0.12
+      }
+    }
+  },
+  "advanced_metrics": {
+    "efficiency_metrics": [
+      "Gls/Sh",
+      "Ast/90",
+      "G+A/90"
+    ],
+    "consistency_bonus": 0.1,
+    "form_weight": 0.3,
+    "age_weight": 0.05,
+    "market_value_weight": 0.05
+  },
+  "position_detection": {
+    "GK_keywords": [
+      "goalkeeper",
+      "keeper",
+      "gk"
+    ],
+    "DEF_keywords": [
+      "defender",
+      "defence",
+      "back",
+      "cb",
+      "rb",
+      "lb"
+    ],
+    "MID_keywords": [
+      "midfielder",
+      "midfield",
+      "cm",
+      "cam",
+      "cdm"
+    ],
+    "FWD_keywords": [
+      "forward",
+      "striker",
+      "attacker",
+      "winger",
+      "fw",
+      "cf"
+    ]
+  },
+  "scaling": {
+    "min_rating": 0,
+    "max_rating": 100,
+    "use_percentile": true,
+    "percentile_range": [
+      10,
+      90
+    ]
+  }
+}
