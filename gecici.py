@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bundesliga Tahmin Modeli - Ultimate Final Sürüm
-Geliştirilmiş Cumulative Stats + Draw Optimization + HomeWin Recall Enhancement
+Bundesliga Tahmin Modeli - ULTIMATE PRODUCTION SÜRÜM
+Geliştirilmiş Data Drift Detection + Strict Feature Selection + Enhanced Regularization
 """
 
 import os
@@ -15,7 +15,8 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 import lightgbm as lgb
-from datetime import datetime
+from datetime import datetime, timedelta
+from scipy import stats
 
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
@@ -35,9 +36,11 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.15
 VAL_SIZE = 0.15
 N_JOBS = -1
+MAX_FEATURES = 12  # Daha strict feature selection
 
 DATA_PATH = "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.xlsx"
 PLAYER_DATA_PATH = "data/final_bundesliga_dataset_complete.xlsx"
+OLD_MODEL_PATH = "models/bundesliga_model_ultimate_final.pkl"
 
 # Geliştirilmiş özellik listesi - OPTIMIZED FEATURES
 SELECTED_FEATURES = [
@@ -77,6 +80,130 @@ SELECTED_FEATURES = [
     # YENİ: HOMEWIN RECALL OPTIMIZATION
     'home_advantage_strength', 'home_defensive_stability'
 ]
+
+# ========== DATA DRIFT DETECTION ==========
+class DataDriftDetector:
+    """Veri dağılımı değişimini tespit eden sınıf"""
+    
+    def __init__(self):
+        self.drift_results = {}
+        
+    def detect_drift(self, old_data, new_data, feature_columns, alpha=0.05):
+        """Eski ve yeni veri arasındaki dağılım farkını tespit et"""
+        print("\n🔍 DATA DRIFT DETECTION ANALİZİ...")
+        
+        drift_detected = {}
+        
+        for feature in feature_columns:
+            if feature in old_data.columns and feature in new_data.columns:
+                # Eksik değerleri temizle
+                old_vals = old_data[feature].dropna()
+                new_vals = new_data[feature].dropna()
+                
+                if len(old_vals) > 10 and len(new_vals) > 10:
+                    # Kolmogorov-Smirnov testi
+                    stat, p_value = stats.ks_2samp(old_vals, new_vals)
+                    
+                    # Ortalama farkı
+                    mean_diff = abs(old_vals.mean() - new_vals.mean())
+                    std_ratio = old_vals.std() / (new_vals.std() + 1e-8)
+                    
+                    drift_detected[feature] = {
+                        'p_value': p_value,
+                        'drift_detected': p_value < alpha,
+                        'mean_difference': mean_diff,
+                        'std_ratio': std_ratio,
+                        'ks_statistic': stat
+                    }
+        
+        self.drift_results = drift_detected
+        
+        # Drift tespit edilen feature'ları raporla
+        drifted_features = [feat for feat, result in drift_detected.items() 
+                          if result['drift_detected']]
+        
+        print(f"📊 Drift analizi tamamlandı:")
+        print(f"   ✅ Toplam feature: {len(drift_detected)}")
+        print(f"   ⚠️  Drift tespit edilen: {len(drifted_features)}")
+        
+        if drifted_features:
+            print(f"   🚨 Drift eden feature'lar: {drifted_features}")
+            
+            # Drift şiddetini analiz et
+            for feat in drifted_features[:5]:  # İlk 5'i göster
+                result = drift_detected[feat]
+                print(f"      📈 {feat}: p-value={result['p_value']:.4f}, "
+                      f"mean_diff={result['mean_difference']:.2f}")
+        
+        return drift_detected
+
+# ========== GELİŞTİRİLMİŞ STRICT FEATURE SELECTION ==========
+def enhanced_strict_feature_selection(X_train, y_train, X_val, X_test, max_features=MAX_FEATURES):
+    """OVERFITTING ÖNLEMEK İÇİN DAHA STRICT FEATURE SELECTION"""
+    print(f"🔍 STRICT Feature Selection (Max {max_features} özellik)...")
+    
+    # 1. Random Forest ile initial selection
+    estimator = RandomForestClassifier(
+        n_estimators=200, 
+        random_state=RANDOM_STATE, 
+        n_jobs=-1,
+        max_depth=5
+    )
+    
+    # Daha yüksek threshold ile selection
+    selector = SelectFromModel(estimator, threshold="1.25*mean")
+    selector.fit(X_train, y_train)
+    
+    selected_features = X_train.columns[selector.get_support()].tolist()
+    
+    # 2. Eğer hala çok fazla özellik varsa, en iyi N tanesini al
+    if len(selected_features) > max_features:
+        print(f"⚡ Çok fazla özellik seçildi ({len(selected_features)}), en iyi {max_features} tanesi alınıyor...")
+        
+        # Feature importance'ye göre sırala
+        estimator.fit(X_train[selected_features], y_train)
+        importances = estimator.feature_importances_
+        indices = np.argsort(importances)[::-1]
+        
+        # En iyi N feature'ı seç
+        selected_features = [selected_features[i] for i in indices[:max_features]]
+    
+    # 3. Correlation analysis - yüksek korelasyonlu feature'ları çıkar
+    selected_features = remove_highly_correlated_features(X_train[selected_features], selected_features)
+    
+    print(f"✅ Seçilen özellik sayısı: {len(selected_features)}/{X_train.shape[1]}")
+    print(f"📋 Seçilen özellikler: {selected_features}")
+    
+    X_train_selected = X_train[selected_features]
+    X_val_selected = X_val[selected_features]
+    X_test_selected = X_test[selected_features]
+    
+    return X_train_selected, X_val_selected, X_test_selected, selected_features
+
+def remove_highly_correlated_features(X, features, threshold=0.85):
+    """Yüksek korelasyonlu feature'ları temizle"""
+    if len(features) <= 2:
+        return features
+    
+    correlation_matrix = X.corr().abs()
+    upper_tri = correlation_matrix.where(np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool))
+    
+    to_drop = []
+    for column in upper_tri.columns:
+        if column in features:
+            high_corr_features = upper_tri[column][upper_tri[column] > threshold].index.tolist()
+            for feat in high_corr_features:
+                if feat in features and feat not in to_drop and column not in to_drop:
+                    # İkisinden birini rastgele seç (daha sonra importance'ye göre geliştirilebilir)
+                    to_drop.append(feat)
+    
+    # to_drop'daki feature'ları çıkar
+    selected_features = [f for f in features if f not in to_drop]
+    
+    if to_drop:
+        print(f"📊 Yüksek korelasyonlu {len(to_drop)} özellik çıkarıldı: {to_drop}")
+    
+    return selected_features
 
 # ========== MANUEL CUMULATIVE STATS HESAPLAMA ==========
 def calculate_cumulative_stats(df_matches):
@@ -262,47 +389,6 @@ class AdvancedFeatureEngineer(BaseEstimator, TransformerMixin):
         self.feature_names = X.columns.tolist()
         return X
 
-# ========== FEATURE SELECTION FONKSİYONLARI ==========
-def perform_strict_feature_selection(X_train, y_train, X_val, X_test, method='importance'):
-    """OVERFITTING ÖNLEMEK İÇİN DAHA STRICT FEATURE SELECTION"""
-    print("🔍 STRICT Feature selection yapılıyor...")
-    
-    if method == 'importance':
-        # Random Forest ile feature importance
-        estimator = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-        selector = SelectFromModel(estimator, threshold='mean')
-        
-        selector.fit(X_train, y_train)
-        selected_features = X_train.columns[selector.get_support()].tolist()
-        
-        # Eğer hala çok fazla özellik varsa, en iyi 15 tanesini al
-        if len(selected_features) > 15:
-            print(f"⚡ Çok fazla özellik seçildi ({len(selected_features)}), en iyi 15 tanesi alınıyor...")
-            estimator.fit(X_train, y_train)
-            importances = estimator.feature_importances_
-            indices = np.argsort(importances)[::-1]
-            selected_features = [X_train.columns[i] for i in indices[:15]]
-        
-    elif method == 'rfe':
-        # Recursive Feature Elimination
-        estimator = RandomForestClassifier(n_estimators=50, random_state=RANDOM_STATE)
-        rfe = RFE(estimator=estimator, n_features_to_select=min(15, X_train.shape[1]))
-        rfe.fit(X_train, y_train)
-        selected_features = X_train.columns[rfe.support_].tolist()
-    
-    else:
-        # Tüm feature'ları seç
-        selected_features = X_train.columns.tolist()
-    
-    print(f"✅ Seçilen özellik sayısı: {len(selected_features)}/{X_train.shape[1]}")
-    print(f"📋 Seçilen özellikler: {selected_features}")
-    
-    X_train_selected = X_train[selected_features]
-    X_val_selected = X_val[selected_features]
-    X_test_selected = X_test[selected_features]
-    
-    return X_train_selected, X_val_selected, X_test_selected, selected_features
-
 # ========== GELİŞTİRİLMİŞ VERİ HAZIRLAMA ==========
 def enhanced_data_preparation(df_matches, df_players):
     """
@@ -401,6 +487,8 @@ def enhanced_missing_value_imputation(df):
             null_count = df[column].isnull().sum()
             if null_count > 0:
                 df[column].fillna(default_value, inplace=True)
+                if null_count > 0:
+                    print(f"   ⚠️  {column}: {null_count} eksik değer dolduruldu")
     
     return df
 
@@ -481,7 +569,10 @@ def handle_outliers(df):
             lower_bound = Q1 - 1.5 * IQR
             upper_bound = Q3 + 1.5 * IQR
             
-            df[col] = np.clip(df[col], lower_bound, upper_bound)
+            outliers_count = ((df[col] < lower_bound) | (df[col] > upper_bound)).sum()
+            if outliers_count > 0:
+                df[col] = np.clip(df[col], lower_bound, upper_bound)
+                print(f"   📈 {col}: {outliers_count} outlier düzeltildi")
     
     return df
 
@@ -505,30 +596,30 @@ def compute_enhanced_ratings(df, df_players):
     return df
 
 # ========== OVERFITTING ÖNLEYİCİ MODEL PIPELINE ==========
-def create_overfitting_prevention_pipeline(selected_features):
-    """OVERFITTING ÖNLEMEK İÇİN BASİT VE REGULARIZE EDİLMİŞ PIPELINE"""
+def create_enhanced_prevention_pipeline(selected_features):
+    """GELİŞTİRİLMİŞ OVERFITTING ÖNLEYİCİ PIPELINE"""
     
     # Sadece scaler ve model
     preprocessor = ColumnTransformer([
         ('scaler', RobustScaler(), selected_features)
     ], remainder='drop')
     
-    # OVERFITTING ÖNLEYİCİ LightGBM parametreleri
+    # GELİŞTİRİLMİŞ OVERFITTING ÖNLEYİCİ LightGBM parametreleri
     lgbm_clf = lgb.LGBMClassifier(
         objective='multiclass',
         num_class=3,
         random_state=RANDOM_STATE,
         n_jobs=N_JOBS,
         verbosity=-1,
-        n_estimators=500,
-        learning_rate=0.01,
+        n_estimators=400,
+        learning_rate=0.008,
         max_depth=3,
-        num_leaves=10,
-        min_child_samples=50,
-        subsample=0.6,
-        colsample_bytree=0.6,
-        reg_alpha=2.0,
-        reg_lambda=2.0,
+        num_leaves=8,
+        min_child_samples=80,
+        subsample=0.5,
+        colsample_bytree=0.5,
+        reg_alpha=3.0,
+        reg_lambda=3.0,
         force_row_wise=True
     )
     
@@ -590,22 +681,79 @@ def apply_smote_balancing(X_train, y_train):
     print(f"📊 SMOTE sonrası sınıf dağılımı: {pd.Series(y_resampled).value_counts().to_dict()}")
     return X_resampled, y_resampled
 
-# ========== OVERFITTING ÖNLEYİCİ MODEL EĞİTİMİ ==========
-def train_enhanced_model():
-    """OVERFITTING ÖNLEYİCİ model eğitim fonksiyonu"""
-    print("⚽ Bundesliga Tahmin Modeli - Ultimate Final Sürüm")
+# ========== DATA DRIFT ANALYSIS ==========
+def perform_data_drift_analysis(df):
+    """Veri drift analizi yap"""
+    print("\n🔍 DATA DRIFT ANALİZİ BAŞLATILIYOR...")
+    
+    # Eski ve yeni veriyi ayır (tarihe göre)
+    if 'Date' in df.columns:
+        cutoff_date = df['Date'].quantile(0.7)  # %70 eski, %30 yeni
+        old_data = df[df['Date'] <= cutoff_date]
+        new_data = df[df['Date'] > cutoff_date]
+        
+        print(f"📅 Veri split: Eski ({len(old_data)} maç) vs Yeni ({len(new_data)} maç)")
+        
+        # Data drift detection
+        drift_detector = DataDriftDetector()
+        drift_results = drift_detector.detect_drift(
+            old_data, new_data, 
+            [col for col in SELECTED_FEATURES if col in df.columns]
+        )
+        
+        return drift_results
+    else:
+        print("⚠️ Tarih sütunu yok, drift analizi atlanıyor")
+        return {}
+
+# ========== INCREMENTAL LEARNING ==========
+def incremental_learning_option(X_train, y_train, X_val, y_val, important_features):
+    """Incremental learning seçeneği"""
+    if os.path.exists(OLD_MODEL_PATH):
+        print("\n🔄 INCREMENTAL LEARNING SEÇENEĞİ...")
+        try:
+            old_model = joblib.load(OLD_MODEL_PATH)
+            print("✅ Eski model yüklendi, incremental learning uygulanıyor...")
+            
+            # Yeni verilerle fine-tuning
+            old_model.named_steps['lgbm'].fit(
+                X_train[important_features], y_train,
+                init_model=old_model.named_steps['lgbm'],
+                eval_set=[(X_val[important_features], y_val)],
+                callbacks=[
+                    lgb.early_stopping(30),
+                    lgb.log_evaluation(50),
+                    lgb.reset_parameter(learning_rate=[0.01] * 1000)
+                ]
+            )
+            return old_model
+        except Exception as e:
+            print(f"⚠️ Incremental learning başarısız: {e}")
+            print("🔁 Yeni model from scratch eğitilecek...")
+            return None
+    return None
+
+# ========== GELİŞTİRİLMİŞ MODEL EĞİTİMİ ==========
+def train_enhanced_production_model():
+    """GELİŞTİRİLMİŞ PRODUCTION MODEL EĞİTİMİ"""
+    print("⚽ Bundesliga Tahmin Modeli - ULTIMATE PRODUCTION SÜRÜM")
     print("=" * 70)
     print("✅ Advanced feature engineering") 
     print("✅ OPTIMIZED cumulative metrikler")
     print("✅ DRAW OPTIMIZATION özellikleri")
     print("✅ HOMEWIN RECALL enhancement")
     print("✅ SMOTE class balancing")
-    print("✅ STRICT feature selection (Max 15 özellik)")
-    print("✅ OVERFITTING PREVENTION techniques")
+    print(f"✅ STRICT feature selection (Max {MAX_FEATURES} özellik)")
+    print("✅ DATA DRIFT DETECTION")
+    print("✅ ENHANCED REGULARIZATION")
+    print("✅ INCREMENTAL LEARNING option")
     print("=" * 70)
     
     # Veriyi yükle
     df = load_and_validate_enhanced_data()
+    
+    # Data drift analizi yap
+    drift_results = perform_data_drift_analysis(df)
     
     # Zaman bazlı split
     train_df, val_df, test_df = time_based_split(df, TEST_SIZE, VAL_SIZE)
@@ -630,94 +778,101 @@ def train_enhanced_model():
     # 2. SMOTE ile class balancing uygula
     X_train_balanced, y_train_balanced = apply_smote_balancing(X_train, y_train)
     
-    # 3. Pipeline dışında STRICT feature selection yap
-    X_train_selected, X_val_selected, X_test_selected, important_features = perform_strict_feature_selection(
-        X_train_balanced, y_train_balanced, X_val, X_test, method='importance'
+    # 3. STRICT feature selection yap
+    X_train_selected, X_val_selected, X_test_selected, important_features = enhanced_strict_feature_selection(
+        X_train_balanced, y_train_balanced, X_val, X_test, MAX_FEATURES
     )
     
-    # 4. Sınıf ağırlıklarını hesapla
-    classes = np.unique(y_train_balanced)
-    class_weights = compute_class_weight('balanced', classes=classes, y=y_train_balanced)
-    class_weight_dict = dict(zip(classes, class_weights))
-    sample_weights_train = np.array([class_weight_dict[yy] for yy in y_train_balanced])
+    # 4. Incremental learning seçeneğini dene
+    incremental_model = incremental_learning_option(X_train_balanced, y_train_balanced, X_val, y_val, important_features)
     
-    print(f"📊 Eğitim verisi: {X_train_selected.shape}")
-    print(f"📊 Validation verisi: {X_val_selected.shape}")
-    print(f"📊 Test verisi: {X_test_selected.shape}")
-    print(f"⚖️ Sınıf ağırlıkları: {class_weight_dict}")
+    if incremental_model is not None:
+        final_model = incremental_model
+        print("✅ Incremental learning ile model güncellendi!")
+    else:
+        # 5. Sınıf ağırlıklarını hesapla
+        classes = np.unique(y_train_balanced)
+        class_weights = compute_class_weight('balanced', classes=classes, y=y_train_balanced)
+        class_weight_dict = dict(zip(classes, class_weights))
+        sample_weights_train = np.array([class_weight_dict[yy] for yy in y_train_balanced])
+        
+        print(f"📊 Eğitim verisi: {X_train_selected.shape}")
+        print(f"📊 Validation verisi: {X_val_selected.shape}")
+        print(f"📊 Test verisi: {X_test_selected.shape}")
+        print(f"⚖️ Sınıf ağırlıkları: {class_weight_dict}")
+        
+        # 6. Overfitting önleyici pipeline oluştur
+        model = create_enhanced_prevention_pipeline(important_features)
+        
+        # 7. GELİŞTİRİLMİŞ Hiperparametre optimizasyonu
+        param_distributions = {
+            'lgbm__learning_rate': [0.005, 0.008, 0.01],
+            'lgbm__max_depth': [2, 3],
+            'lgbm__num_leaves': [6, 8, 10],
+            'lgbm__min_child_samples': [60, 80, 100],
+            'lgbm__reg_alpha': [2.0, 3.0, 4.0],
+            'lgbm__reg_lambda': [2.0, 3.0, 4.0],
+            'lgbm__subsample': [0.4, 0.5, 0.6],
+            'lgbm__colsample_bytree': [0.4, 0.5, 0.6],
+            'lgbm__n_estimators': [300, 400, 500]
+        }
+        
+        tscv = TimeSeriesSplit(n_splits=15)  # Daha fazla split
+        
+        print("\n🎯 GELİŞTİRİLMİŞ Hiperparametre Optimizasyonu...")
+        random_search = RandomizedSearchCV(
+            estimator=model,
+            param_distributions=param_distributions,
+            n_iter=25,
+            cv=tscv,
+            scoring='balanced_accuracy',
+            n_jobs=N_JOBS,
+            verbose=2,
+            random_state=RANDOM_STATE,
+            return_train_score=True
+        )
+        
+        random_search.fit(X_train_selected, y_train_balanced, lgbm__sample_weight=sample_weights_train)
+        
+        best_params = random_search.best_params_
+        best_score = random_search.best_score_
+        
+        print(f"\n🏆 En İyi Parametreler: {best_params}")
+        print(f"🏆 En İyi CV Skoru: {best_score:.4f}")
+        
+        # 8. Final modeli eğit
+        print("\n🚀 Final model eğitimi (Enhanced Early Stopping ile)...")
+        final_model = create_enhanced_prevention_pipeline(important_features)
+        final_model.set_params(**best_params)
+        
+        final_model.named_steps['lgbm'].set_params(
+            n_estimators=1000,
+            early_stopping_rounds=50,
+            verbose=100
+        )
+        
+        final_model.fit(
+            X_train_selected, y_train_balanced,
+            lgbm__eval_set=[(X_val_selected, y_val)],
+            lgbm__eval_metric='multi_logloss',
+            lgbm__sample_weight=sample_weights_train,
+            lgbm__callbacks=[lgb.early_stopping(50), lgb.log_evaluation(100)]
+        )
     
-    # 5. Overfitting önleyici pipeline oluştur
-    model = create_overfitting_prevention_pipeline(important_features)
-    
-    # 6. Hiperparametre optimizasyonu
-    param_distributions = {
-        'lgbm__learning_rate': [0.005, 0.01, 0.02],
-        'lgbm__max_depth': [2, 3, 4],
-        'lgbm__num_leaves': [8, 10, 12],
-        'lgbm__min_child_samples': [40, 50, 60],
-        'lgbm__reg_alpha': [1.0, 2.0, 3.0],
-        'lgbm__reg_lambda': [1.0, 2.0, 3.0],
-        'lgbm__subsample': [0.5, 0.6, 0.7],
-        'lgbm__colsample_bytree': [0.5, 0.6, 0.7],
-        'lgbm__n_estimators': [300, 500, 700]
-    }
-    
-    tscv = TimeSeriesSplit(n_splits=10)
-    
-    print("\n🎯 Overfitting Önleyici Hiperparametre Optimizasyonu...")
-    random_search = RandomizedSearchCV(
-        estimator=model,
-        param_distributions=param_distributions,
-        n_iter=20,
-        cv=tscv,
-        scoring='balanced_accuracy',
-        n_jobs=N_JOBS,
-        verbose=2,
-        random_state=RANDOM_STATE,
-        return_train_score=True
-    )
-    
-    random_search.fit(X_train_selected, y_train_balanced, lgbm__sample_weight=sample_weights_train)
-    
-    best_params = random_search.best_params_
-    best_score = random_search.best_score_
-    
-    print(f"\n🏆 En İyi Parametreler: {best_params}")
-    print(f"🏆 En İyi CV Skoru: {best_score:.4f}")
-    
-    # 7. Final modeli eğit
-    print("\n🚀 Final model eğitimi (Early Stopping ile)...")
-    final_model = create_overfitting_prevention_pipeline(important_features)
-    final_model.set_params(**best_params)
-    
-    final_model.named_steps['lgbm'].set_params(
-        n_estimators=1000,
-        early_stopping_rounds=50,
-        verbose=100
-    )
-    
-    final_model.fit(
-        X_train_selected, y_train_balanced,
-        lgbm__eval_set=[(X_val_selected, y_val)],
-        lgbm__eval_metric='multi_logloss',
-        lgbm__sample_weight=sample_weights_train,
-        lgbm__callbacks=[lgb.early_stopping(50), lgb.log_evaluation(100)]
-    )
-    
-    # 8. Model değerlendirme
+    # 9. Model değerlendirme
     print("\n📊 Kapsamlı Model Değerlendirme:")
-    evaluate_model_comprehensive(final_model, X_test_selected, y_test, X_train_selected, y_train_balanced)
+    evaluate_enhanced_model(final_model, X_test_selected, y_test, X_train_selected, y_train_balanced, drift_results)
     
-    # 9. Feature importance analizi
-    analyze_feature_importance(final_model, important_features)
+    # 10. Feature importance analizi
+    analyze_enhanced_feature_importance(final_model, important_features, drift_results)
     
-    # 10. Modeli kaydet
-    save_enhanced_model(final_model, important_features, best_params, random_search.cv_results_)
+    # 11. Modeli kaydet
+    save_production_model(final_model, important_features, best_params if 'best_params' in locals() else {})
     
     return final_model, important_features
 
-def evaluate_model_comprehensive(model, X_test, y_test, X_train, y_train):
-    """Kapsamlı model değerlendirme"""
+def evaluate_enhanced_model(model, X_test, y_test, X_train, y_train, drift_results):
+    """Geliştirilmiş model değerlendirme"""
     
     y_pred_test = model.predict(X_test)
     y_pred_train = model.predict(X_train)
@@ -753,6 +908,12 @@ def evaluate_model_comprehensive(model, X_test, y_test, X_train, y_train):
     else:
         print("✅ EXCELLENT: Overfitting riski çok düşük!")
     
+    # Data drift etkisi
+    if drift_results:
+        drifted_count = sum(1 for result in drift_results.values() if result['drift_detected'])
+        if drifted_count > 5:
+            print(f"⚠️ DATA DRIFT: {drifted_count} feature'da drift tespit edildi!")
+    
     print("\n🎯 Detaylı Classification Report:")
     print(classification_report(y_test, y_pred_test, target_names=['Draw', 'HomeWin', 'AwayWin']))
     
@@ -762,68 +923,93 @@ def evaluate_model_comprehensive(model, X_test, y_test, X_train, y_train):
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=['Draw', 'HomeWin', 'AwayWin'],
                 yticklabels=['Draw', 'HomeWin', 'AwayWin'])
-    plt.title('Confusion Matrix - Test Set (Ultimate Final Model)')
+    plt.title('Confusion Matrix - Test Set (Production Model)')
     plt.ylabel('Gerçek Değer')
     plt.xlabel('Tahmin Edilen Değer')
-    plt.savefig('models/confusion_matrix_ultimate_final.png', dpi=300, bbox_inches='tight')
+    plt.savefig('models/confusion_matrix_production.png', dpi=300, bbox_inches='tight')
     plt.close()
 
-def analyze_feature_importance(model, feature_names):
-    """Feature importance analizi"""
+def analyze_enhanced_feature_importance(model, feature_names, drift_results):
+    """Geliştirilmiş feature importance analizi"""
     try:
         if hasattr(model.named_steps['lgbm'], 'feature_importances_'):
             importances = model.named_steps['lgbm'].feature_importances_
             indices = np.argsort(importances)[::-1]
             
-            print("\n🏆 Feature Importance Ranking:")
+            print("\n🏆 Enhanced Feature Importance Ranking:")
             for i, idx in enumerate(indices[:15]):
                 if idx < len(feature_names):
-                    print(f"{i+1:2d}. {feature_names[idx]:30s} ({importances[idx]:.4f})")
+                    feature_name = feature_names[idx]
+                    importance_val = importances[idx]
+                    
+                    # Drift bilgisini ekle
+                    drift_info = ""
+                    if feature_name in drift_results and drift_results[feature_name]['drift_detected']:
+                        drift_info = " 🚨DRIFT"
+                    
+                    print(f"{i+1:2d}. {feature_name:30s} ({importance_val:.4f}){drift_info}")
             
             # Görselleştirme
             plt.figure(figsize=(12, 8))
             top_n = min(10, len(feature_names))
-            plt.barh(range(top_n), importances[indices[:top_n]][::-1], align='center')
+            
+            # Drift durumuna göre renk
+            colors = []
+            for i in indices[:top_n]:
+                feature_name = feature_names[i]
+                if feature_name in drift_results and drift_results[feature_name]['drift_detected']:
+                    colors.append('red')  # Drift var
+                else:
+                    colors.append('blue')  # Drift yok
+            
+            plt.barh(range(top_n), importances[indices[:top_n]][::-1], 
+                    align='center', color=colors[::-1])
             plt.yticks(range(top_n), [feature_names[i] for i in indices[:top_n]][::-1])
             plt.xlabel('Importance')
-            plt.title('Top Feature Importances (Ultimate Final Model)')
+            plt.title('Top Feature Importances (Production Model)\nRed: Data Drift Detected')
             plt.tight_layout()
-            plt.savefig('models/feature_importance_ultimate_final.png', dpi=300, bbox_inches='tight')
+            plt.savefig('models/feature_importance_production.png', dpi=300, bbox_inches='tight')
             plt.close()
     
     except Exception as e:
         print(f"⚠️ Feature importance analizinde hata: {e}")
 
-def save_enhanced_model(model, important_features, best_params, cv_results):
-    """Geliştirilmiş model kaydetme"""
+def save_production_model(model, important_features, best_params):
+    """Production model kaydetme"""
     os.makedirs("models", exist_ok=True)
     
-    model_path = "models/bundesliga_model_ultimate_final.pkl"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path = f"models/bundesliga_model_production_{timestamp}.pkl"
     joblib.dump(model, model_path)
+    
+    # Latest model olarak da kaydet
+    joblib.dump(model, "models/bundesliga_model_production_latest.pkl")
     
     feature_info = {
         'important_features': important_features,
         'all_features': SELECTED_FEATURES,
         'best_params': best_params,
-        'cv_results': cv_results,
         'timestamp': datetime.now().isoformat(),
-        'model_version': 'ultimate_final_v1'
+        'model_version': 'production_v2',
+        'max_features': MAX_FEATURES
     }
-    joblib.dump(feature_info, "models/feature_info_ultimate_final.pkl")
+    joblib.dump(feature_info, "models/feature_info_production.pkl")
     
     performance_report = {
-        'model_type': 'LightGBM Ultimate Final',
+        'model_type': 'LightGBM Production',
         'features_used': len(important_features),
         'total_features': len(SELECTED_FEATURES),
+        'max_features_limit': MAX_FEATURES,
         'training_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'max_features_limit': 15,
         'cumulative_metrics_included': True,
         'draw_optimization': True,
         'homewin_recall_enhancement': True,
-        'smote_balancing': True
+        'smote_balancing': True,
+        'data_drift_detection': True,
+        'enhanced_regularization': True
     }
     
-    with open("models/performance_report_ultimate_final.txt", "w") as f:
+    with open("models/performance_report_production.txt", "w") as f:
         for key, value in performance_report.items():
             f.write(f"{key}: {value}\n")
     
@@ -853,7 +1039,7 @@ def time_based_split(df, test_size=0.15, val_size=0.15):
 
 # ========== ANA FONKSİYON ==========
 def main():
-    print("🏆 Bundesliga Tahmin Modeli - Ultimate Final Sürüm")
+    print("🏆 Bundesliga Tahmin Modeli - ULTIMATE PRODUCTION SÜRÜM")
     print("=" * 60)
     print("🚀 Başlatılıyor...")
     
@@ -861,9 +1047,9 @@ def main():
     os.makedirs("data", exist_ok=True)
     
     try:
-        model, important_features = train_enhanced_model()
+        model, important_features = train_enhanced_production_model()
         
-        print("\n🎉 Ultimate Final Model eğitimi başarıyla tamamlandı!")
+        print("\n🎉 PRODUCTION MODEL eğitimi başarıyla tamamlandı!")
         print(f"📋 Kullanılan önemli feature'lar: {len(important_features)}/{len(SELECTED_FEATURES)}")
         print("📍 Model dosyaları 'models/' klasörüne kaydedildi")
         
@@ -882,12 +1068,13 @@ def main():
         print(f"   🤝 Draw optimization: {len(draw_features)}")
         print(f"   🏠 HomeWin recall: {len(homewin_features)}")
         
-        print("\n🏆 MODEL BAŞARI ÖZETİ:")
-        print("✅ %58.72+ accuracy hedefi")
+        print("\n🏆 MODEL BAŞARI HEDEFLERİ:")
+        print("✅ %61.47+ accuracy hedefi")
         print("✅ Draw recall > %40 hedefi") 
         print("✅ HomeWin recall > %65 hedefi")
         print("✅ AwayWin recall > %75 hedefi")
-        print("✅ Overfitting kontrolü")
+        print("✅ Overfitting gap < %5 hedefi")
+        print("✅ Data drift monitoring")
         
     except Exception as e:
         print(f"❌ Model eğitimi sırasında hata: {e}")

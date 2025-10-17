@@ -1,0 +1,11 @@
+model_type: LightGBM Production
+features_used: 11
+total_features: 44
+max_features_limit: 12
+training_date: 2025-10-18 01:23:46
+cumulative_metrics_included: True
+draw_optimization: True
+homewin_recall_enhancement: True
+smote_balancing: True
+data_drift_detection: True
+enhanced_regularization: True
