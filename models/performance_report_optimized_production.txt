@@ -1,0 +1,10 @@
+model_type: LightGBM (Anti-Overfitting)
+features_used: 12
+total_features: 29
+max_features_limit: 12
+training_date: 2025-10-19 21:54:38
+optimized_smote_balancing: True
+anti_overfitting_feature_selection: True
+simplified_model_architecture: True
+data_drift_detection: True
+accuracy_target: 58%+

@@ -1,0 +1,8 @@
+model_type: LightGBM Radical v3
+features_used: 11
+total_features: 24
+max_features_limit: 12
+training_date: 2025-10-19 21:26:42
+strategy: Radical Overfitting Fix + Aggressive Draw Protection
+class_balancing: Advanced Weighting (No SMOTE)
+feature_selection: Radical Correlation + Importance

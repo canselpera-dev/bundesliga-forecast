@@ -1,0 +1,13 @@
+model_type: Enhanced Ensemble (LightGBM + XGBoost + RandomForest)
+features_used: 12
+total_features: 52
+max_features_limit: 12
+training_date: 2025-10-19 22:28:26
+draw_optimization_features: True
+homewin_recall_enhancement: True
+ensemble_architecture: True
+enhanced_smote_balancing: True
+data_drift_compensation: True
+targeted_feature_selection: True
+accuracy_target: 65%+
+model_version: v3.0
