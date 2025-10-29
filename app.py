@@ -1,4 +1,4 @@
-# app.py - ULTIMATE PRODUCTION TAHMİN KODU - REALISTIC BALANCE v10.1 UYUMLU
+# app.py - GÜNCELLENMİŞ TAHMİN KODU (HARF SIRASIYLA OYUNCULAR)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -18,7 +18,7 @@ DATA_PATH = "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.xlsx
 PLAYER_DATA_PATH = "data/final_bundesliga_dataset_complete.xlsx"
 
 # ✅ REALISTIC MODEL YOLLARI
-MODEL_PATH = "models/bundesliga_model_realistic_20251029_183237.pkl"  # En son eğitilen model
+MODEL_PATH = "models/bundesliga_model_realistic_20251029_183237.pkl"
 FEATURE_INFO_PATH = "models/feature_info_realistic.pkl"
 
 TOP_N_STARTERS = 11
@@ -26,25 +26,16 @@ TOP_N_SUBS = 7
 STARTER_WEIGHT = 0.7
 SUB_WEIGHT = 0.3
 
-# ✅ REALISTIC FEATURE LISTESİ (Eğitimden gelen 12 özellik)
+# ✅ REALISTIC FEATURE LISTESİ
 REALISTIC_FEATURES = [
-    # Temel Performans Metrikleri - EN KRİTİK
     'home_ppg_cumulative', 'away_ppg_cumulative',
     'home_gpg_cumulative', 'away_gpg_cumulative',
     'home_gapg_cumulative', 'away_gapg_cumulative',
     'home_form_5games', 'away_form_5games',
-    
-    # Power ve Form - ORTA KRİTİK
     'home_power_index', 'away_power_index', 
     'power_difference', 'form_difference',
-    
-    # H2H - ÖNEMLİ
     'h2h_win_ratio', 'h2h_goal_difference',
-    
-    # Value-based - DESTEK
     'value_difference', 'value_ratio',
-    
-    # Özel Durumlar
     'isDerby'
 ]
 
@@ -79,33 +70,22 @@ def normalize_name(name: str) -> str:
 def get_feature_description(feature_name):
     """✅ REALISTIC Feature açıklamalarını getir"""
     descriptions = {
-        # EN KRİTİK FEATURE'LAR
         'home_ppg_cumulative': 'Ev sahibi takımın maç başına puan ortalaması (EN ÖNEMLİ)',
         'away_ppg_cumulative': 'Deplasman takımın maç başına puan ortalaması (EN ÖNEMLİ)',
         'home_form_5games': 'Ev sahibi takımın son 5 maç formu',
         'away_form_5games': 'Deplasman takımın son 5 maç formu',
-        
-        # GOL PERFORMANSI
         'home_gpg_cumulative': 'Ev sahibi takımın maç başına gol ortalaması',
         'away_gpg_cumulative': 'Deplasman takımın maç başına gol ortalaması',
         'home_gapg_cumulative': 'Ev sahibi takımın maç başına yediği gol ortalaması',
         'away_gapg_cumulative': 'Deplasman takımın maç başına yediği gol ortalaması',
-        
-        # GÜÇ VE FORM
         'home_power_index': 'Ev sahibi takım güç indeksi',
         'away_power_index': 'Deplasman takım güç indeksi',
         'power_difference': 'Takım güç farkı (Ev - Deplasman)',
         'form_difference': 'Form farkı (Ev - Deplasman)',
-        
-        # H2H
         'h2h_win_ratio': 'Ev sahibinin geçmiş maçlardaki galibiyet oranı',
         'h2h_goal_difference': 'Geçmiş maçlardaki gol farkı',
-        
-        # VALUE-BASED
         'value_difference': 'Takım değer farkı (Ev - Deplasman)',
         'value_ratio': 'Takım değer oranı (Ev / Deplasman)',
-        
-        # ÖZEL DURUMLAR
         'isDerby': 'Derbi maçı olup olmadığı'
     }
     return descriptions.get(feature_name, 'Bilinmeyen feature')
@@ -733,6 +713,35 @@ if st.session_state.show_squads:
 
     st.header("2️⃣ Kadro Seçimi")
     
+    # 🔄 GÜNCELLENMİŞ ÖZELLİK: Oyuncuları HARF SIRASINA göre sırala
+    def get_sorted_player_options(df_squad, exclude_indices=None):
+        """Oyuncuları harf sırasına göre sırala ve seçili olanları hariç tut"""
+        if exclude_indices is None:
+            exclude_indices = []
+        
+        # 🔥 KRİTİK DÜZELTME: Oyuncuları Player sütununa göre sırala
+        available_players = df_squad[~df_squad.index.isin(exclude_indices)].copy()
+        
+        # Player sütununa göre alfabetik sıralama
+        available_players = available_players.sort_values('Player')
+        
+        # Format fonksiyonu için sıralanmış index'leri ve oyuncu bilgilerini döndür
+        player_options = []
+        for idx in available_players.index:
+            player_name = available_players.loc[idx, 'Player']
+            player_pos = available_players.loc[idx, 'Pos']
+            player_rating = available_players.loc[idx, 'PlayerRating']
+            player_options.append({
+                'index': idx,
+                'display': f"{player_name} - {player_pos} ({player_rating:.1f})",
+                'name': player_name
+            })
+        
+        # Display text'e göre sırala (alfabetik)
+        player_options.sort(key=lambda x: x['display'])
+        
+        return [p['index'] for p in player_options], {p['index']: p['display'] for p in player_options}
+
     # Ev sahibi takım kadrosu
     st.subheader(f"👥 {home_team} Kadrosu")
     
@@ -740,23 +749,54 @@ if st.session_state.show_squads:
     
     with col1:
         st.markdown("**🥅 Başlangıç 11**")
+        
+        # Mevcut seçimleri al
+        current_home_starters = st.session_state.home_starters
+        current_home_subs = st.session_state.home_subs
+        
+        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - HARF SIRASIYLA
+        available_starters_indices, starters_display_dict = get_sorted_player_options(
+            home_squad, exclude_indices=current_home_subs
+        )
+        
         home_starters = st.multiselect(
             "Başlangıç 11 (ev sahibi)",
-            options=list(home_squad.index),
-            format_func=lambda x: f"{home_squad.loc[x, 'Player']} - {home_squad.loc[x, 'Pos']} ({home_squad.loc[x, 'PlayerRating']:.1f})",
+            options=available_starters_indices,
+            format_func=lambda x: starters_display_dict[x],
             key="home_starters_select",
-            default=st.session_state.home_starters
+            default=current_home_starters,
+            max_selections=TOP_N_STARTERS
         )
+        
+        # Seçimleri session state'e kaydet
+        st.session_state.home_starters = home_starters
     
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
+        
+        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - HARF SIRASIYLA
+        available_subs_indices, subs_display_dict = get_sorted_player_options(
+            home_squad, exclude_indices=current_home_starters
+        )
+        
         home_subs = st.multiselect(
             "Yedek Oyuncular (ev sahibi)",
-            options=list(home_squad.index),
-            format_func=lambda x: f"{home_squad.loc[x, 'Player']} - {home_squad.loc[x, 'Pos']} ({home_squad.loc[x, 'PlayerRating']:.1f})",
+            options=available_subs_indices,
+            format_func=lambda x: subs_display_dict[x],
             key="home_subs_select",
-            default=st.session_state.home_subs
+            default=current_home_subs,
+            max_selections=TOP_N_SUBS
         )
+        
+        # Seçimleri session state'e kaydet
+        st.session_state.home_subs = home_subs
+
+    # Seçili oyuncu sayılarını göster
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info(f"**Başlangıç 11:** {len(home_starters)}/{TOP_N_STARTERS} oyuncu")
+    with col2:
+        st.info(f"**Yedekler:** {len(home_subs)}/{TOP_N_SUBS} oyuncu")
 
     # Deplasman takım kadrosu
     st.subheader(f"👥 {away_team} Kadrosu")
@@ -765,23 +805,78 @@ if st.session_state.show_squads:
     
     with col1:
         st.markdown("**🥅 Başlangıç 11**")
+        
+        # Mevcut seçimleri al
+        current_away_starters = st.session_state.away_starters
+        current_away_subs = st.session_state.away_subs
+        
+        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - HARF SIRASIYLA
+        available_starters_indices_away, starters_display_dict_away = get_sorted_player_options(
+            away_squad, exclude_indices=current_away_subs
+        )
+        
         away_starters = st.multiselect(
             "Başlangıç 11 (deplasman)",
-            options=list(away_squad.index),
-            format_func=lambda x: f"{away_squad.loc[x, 'Player']} - {away_squad.loc[x, 'Pos']} ({away_squad.loc[x, 'PlayerRating']:.1f})",
+            options=available_starters_indices_away,
+            format_func=lambda x: starters_display_dict_away[x],
             key="away_starters_select",
-            default=st.session_state.away_starters
+            default=current_away_starters,
+            max_selections=TOP_N_STARTERS
         )
+        
+        # Seçimleri session state'e kaydet
+        st.session_state.away_starters = away_starters
     
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
+        
+        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - HARF SIRASIYLA
+        available_subs_indices_away, subs_display_dict_away = get_sorted_player_options(
+            away_squad, exclude_indices=current_away_starters
+        )
+        
         away_subs = st.multiselect(
             "Yedek Oyuncular (deplasman)",
-            options=list(away_squad.index),
-            format_func=lambda x: f"{away_squad.loc[x, 'Player']} - {away_squad.loc[x, 'Pos']} ({away_squad.loc[x, 'PlayerRating']:.1f})",
+            options=available_subs_indices_away,
+            format_func=lambda x: subs_display_dict_away[x],
             key="away_subs_select",
-            default=st.session_state.away_subs
+            default=current_away_subs,
+            max_selections=TOP_N_SUBS
         )
+        
+        # Seçimleri session state'e kaydet
+        st.session_state.away_subs = away_subs
+
+    # Seçili oyuncu sayılarını göster
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info(f"**Başlangıç 11:** {len(away_starters)}/{TOP_N_STARTERS} oyuncu")
+    with col2:
+        st.info(f"**Yedekler:** {len(away_subs)}/{TOP_N_SUBS} oyuncu")
+
+    # Temizle butonları
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("🔄 Ev Kadrosunu Temizle", type="secondary"):
+            st.session_state.home_starters = []
+            st.session_state.home_subs = []
+            st.rerun()
+    with col2:
+        if st.button("🔄 Dep Kadrosunu Temizle", type="secondary"):
+            st.session_state.away_starters = []
+            st.session_state.away_subs = []
+            st.rerun()
+    with col3:
+        if st.button("🎯 Tüm Kadroları Otomatik Doldur", type="primary"):
+            # Otomatik seçim
+            st.session_state.home_starters = select_topn_by_rating(home_squad, TOP_N_STARTERS)
+            home_all_idxs = home_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
+            st.session_state.home_subs = [i for i in home_all_idxs if i not in st.session_state.home_starters][:TOP_N_SUBS]
+            
+            st.session_state.away_starters = select_topn_by_rating(away_squad, TOP_N_STARTERS)
+            away_all_idxs = away_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
+            st.session_state.away_subs = [i for i in away_all_idxs if i not in st.session_state.away_starters][:TOP_N_SUBS]
+            st.rerun()
 
     st.markdown("---")
 
