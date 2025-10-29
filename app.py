@@ -1,4 +1,4 @@
-# app.py - GÜNCELLENMİŞ TAHMİN KODU (HARF SIRASIYLA OYUNCULAR)
+# app.py - DÜZELTİLMİŞ TAHMİN KODU (HARF SIRASI KESİN ÇÖZÜM)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -138,6 +138,9 @@ def load_player_data(path=PLAYER_DATA_PATH):
                 df['Age'] = pd.to_numeric(df['fbref__Age'], errors='coerce')
             else:
                 df['Age'] = np.nan
+        
+        # 🔥 KRİTİK: Player sütununu temizle ve sıralama için hazırla
+        df['Player'] = df['Player'].astype(str).str.strip()
                 
         return df
     except Exception as e:
@@ -339,7 +342,7 @@ def predict_calculate_cumulative_stats(df_form, home_team, away_team):
     if '_HomeNorm' not in df_form.columns:
         df_form = df_form.copy()
         df_form['_HomeNorm'] = df_form['HomeTeam'].astype(str).apply(normalize_name)
-        df_form['_AwayNorm'] = df_form['AwayTeam'].astype(str).apply(normalize_name)
+        df_form['_AwayNorm'] = df_form['AwayTeam'].ast(str).apply(normalize_name)
     
     # Home team istatistikleri
     home_matches = df_form[(df_form['_HomeNorm'] == home_norm) | (df_form['_AwayNorm'] == home_norm)].copy()
@@ -713,34 +716,29 @@ if st.session_state.show_squads:
 
     st.header("2️⃣ Kadro Seçimi")
     
-    # 🔄 GÜNCELLENMİŞ ÖZELLİK: Oyuncuları HARF SIRASINA göre sırala
+    # 🔥 KESİN ÇÖZÜM: Oyuncuları A'dan Z'ye sırala
     def get_sorted_player_options(df_squad, exclude_indices=None):
-        """Oyuncuları harf sırasına göre sırala ve seçili olanları hariç tut"""
+        """Oyuncuları A'dan Z'ye harf sırasına göre sırala"""
         if exclude_indices is None:
             exclude_indices = []
         
-        # 🔥 KRİTİK DÜZELTME: Oyuncuları Player sütununa göre sırala
+        # Tüm oyuncuları al ve seçili olanları hariç tut
         available_players = df_squad[~df_squad.index.isin(exclude_indices)].copy()
         
-        # Player sütununa göre alfabetik sıralama
-        available_players = available_players.sort_values('Player')
+        # 🔥 KRİTİK DÜZELTME: Player sütununa göre kesin sıralama
+        available_players = available_players.sort_values('Player', key=lambda x: x.str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8'))
         
-        # Format fonksiyonu için sıralanmış index'leri ve oyuncu bilgilerini döndür
-        player_options = []
-        for idx in available_players.index:
+        # Sıralanmış index listesi ve display bilgileri
+        sorted_indices = available_players.index.tolist()
+        display_dict = {}
+        
+        for idx in sorted_indices:
             player_name = available_players.loc[idx, 'Player']
             player_pos = available_players.loc[idx, 'Pos']
             player_rating = available_players.loc[idx, 'PlayerRating']
-            player_options.append({
-                'index': idx,
-                'display': f"{player_name} - {player_pos} ({player_rating:.1f})",
-                'name': player_name
-            })
+            display_dict[idx] = f"{player_name} - {player_pos} ({player_rating:.1f})"
         
-        # Display text'e göre sırala (alfabetik)
-        player_options.sort(key=lambda x: x['display'])
-        
-        return [p['index'] for p in player_options], {p['index']: p['display'] for p in player_options}
+        return sorted_indices, display_dict
 
     # Ev sahibi takım kadrosu
     st.subheader(f"👥 {home_team} Kadrosu")
@@ -754,7 +752,7 @@ if st.session_state.show_squads:
         current_home_starters = st.session_state.home_starters
         current_home_subs = st.session_state.home_subs
         
-        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - HARF SIRASIYLA
+        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - A'dan Z'ye sıralı
         available_starters_indices, starters_display_dict = get_sorted_player_options(
             home_squad, exclude_indices=current_home_subs
         )
@@ -774,7 +772,7 @@ if st.session_state.show_squads:
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
         
-        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - HARF SIRASIYLA
+        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - A'dan Z'ye sıralı
         available_subs_indices, subs_display_dict = get_sorted_player_options(
             home_squad, exclude_indices=current_home_starters
         )
@@ -810,7 +808,7 @@ if st.session_state.show_squads:
         current_away_starters = st.session_state.away_starters
         current_away_subs = st.session_state.away_subs
         
-        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - HARF SIRASIYLA
+        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - A'dan Z'ye sıralı
         available_starters_indices_away, starters_display_dict_away = get_sorted_player_options(
             away_squad, exclude_indices=current_away_subs
         )
@@ -830,7 +828,7 @@ if st.session_state.show_squads:
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
         
-        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - HARF SIRASIYLA
+        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - A'dan Z'ye sıralı
         available_subs_indices_away, subs_display_dict_away = get_sorted_player_options(
             away_squad, exclude_indices=current_away_starters
         )
