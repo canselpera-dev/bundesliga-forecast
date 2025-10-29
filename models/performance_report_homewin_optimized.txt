@@ -1,0 +1,8 @@
+model_type: LightGBM HomeWin Optimized
+features_used: 10
+total_features: 48
+max_features_limit: 15
+training_date: 2025-10-29 14:08:59
+homewin_optimization: True
+data_drift_handling: True
+enhanced_smote: True

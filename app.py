@@ -1,4 +1,4 @@
-# app.py - ULTIMATE PRODUCTION TAHMİN KODU
+# app.py - ULTIMATE PRODUCTION TAHMİN KODU - REALISTIC BALANCE v10.1 UYUMLU
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,30 +12,40 @@ import traceback
 
 warnings.filterwarnings("ignore")
 
-# ================== PRODUCTION KONFİG ==================
+# ================== REALISTIC KONFİG ==================
 RANDOM_STATE = 42
 DATA_PATH = "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.xlsx"
 PLAYER_DATA_PATH = "data/final_bundesliga_dataset_complete.xlsx"
-MODEL_PATH = "models/bundesliga_model_production_latest.pkl"  # ✅ GÜNCELLENDİ
-FEATURE_INFO_PATH = "models/feature_info_production.pkl"  # ✅ GÜNCELLENDİ
+
+# ✅ REALISTIC MODEL YOLLARI
+MODEL_PATH = "models/bundesliga_model_realistic_20251029_183237.pkl"  # En son eğitilen model
+FEATURE_INFO_PATH = "models/feature_info_realistic.pkl"
 
 TOP_N_STARTERS = 11
 TOP_N_SUBS = 7
 STARTER_WEIGHT = 0.7
 SUB_WEIGHT = 0.3
 
-# ✅ PRODUCTION FEATURE LISTESİ (Eğitimden gelen 10 özellik)
-PRODUCTION_FEATURES = [
-    'away_form_ppg_interaction',
-    'cumulative_ppg_difference', 
-    'away_gpg_cumulative',
-    'cumulative_ppg_ratio',
-    'form_difference',
-    'value_difference',
-    'cumulative_gpg_difference',
-    'home_form',
-    'home_form_ppg_interaction',
-    'cumulative_goal_diff_difference'
+# ✅ REALISTIC FEATURE LISTESİ (Eğitimden gelen 12 özellik)
+REALISTIC_FEATURES = [
+    # Temel Performans Metrikleri - EN KRİTİK
+    'home_ppg_cumulative', 'away_ppg_cumulative',
+    'home_gpg_cumulative', 'away_gpg_cumulative',
+    'home_gapg_cumulative', 'away_gapg_cumulative',
+    'home_form_5games', 'away_form_5games',
+    
+    # Power ve Form - ORTA KRİTİK
+    'home_power_index', 'away_power_index', 
+    'power_difference', 'form_difference',
+    
+    # H2H - ÖNEMLİ
+    'h2h_win_ratio', 'h2h_goal_difference',
+    
+    # Value-based - DESTEK
+    'value_difference', 'value_ratio',
+    
+    # Özel Durumlar
+    'isDerby'
 ]
 
 # ================== YARDIMCI FONKSİYONLAR ==================
@@ -67,26 +77,36 @@ def normalize_name(name: str) -> str:
     return s
 
 def get_feature_description(feature_name):
-    """✅ PRODUCTION Feature açıklamalarını getir"""
+    """✅ REALISTIC Feature açıklamalarını getir"""
     descriptions = {
-        # TOP 3 FEATURE'LAR:
-        'away_form_ppg_interaction': 'Deplasman takım formu × puan performansı interaksiyonu (EN ÖNEMLİ)',
-        'cumulative_ppg_difference': 'Kümülatif maç başına puan farkı (2. EN ÖNEMLİ)',
-        'away_gpg_cumulative': 'Deplasman takım maç başına gol ortalaması (3. EN ÖNEMLİ)',
+        # EN KRİTİK FEATURE'LAR
+        'home_ppg_cumulative': 'Ev sahibi takımın maç başına puan ortalaması (EN ÖNEMLİ)',
+        'away_ppg_cumulative': 'Deplasman takımın maç başına puan ortalaması (EN ÖNEMLİ)',
+        'home_form_5games': 'Ev sahibi takımın son 5 maç formu',
+        'away_form_5games': 'Deplasman takımın son 5 maç formu',
         
-        # DİĞER ÖNEMLİ FEATURE'LAR:
-        'cumulative_ppg_ratio': 'Takımların puan ortalaması oranı',
+        # GOL PERFORMANSI
+        'home_gpg_cumulative': 'Ev sahibi takımın maç başına gol ortalaması',
+        'away_gpg_cumulative': 'Deplasman takımın maç başına gol ortalaması',
+        'home_gapg_cumulative': 'Ev sahibi takımın maç başına yediği gol ortalaması',
+        'away_gapg_cumulative': 'Deplasman takımın maç başına yediği gol ortalaması',
+        
+        # GÜÇ VE FORM
+        'home_power_index': 'Ev sahibi takım güç indeksi',
+        'away_power_index': 'Deplasman takım güç indeksi',
+        'power_difference': 'Takım güç farkı (Ev - Deplasman)',
         'form_difference': 'Form farkı (Ev - Deplasman)',
-        'value_difference': 'Takım değer farkı (Ev - Deplasman)',
-        'cumulative_gpg_difference': 'Gol ortalaması farkı',
-        'home_form': 'Ev sahibi takım formu',
-        'home_form_ppg_interaction': 'Ev sahibi form × puan performansı interaksiyonu',
-        'cumulative_goal_diff_difference': 'Averaj farkı',
         
-        # YEDEK FEATURE'LAR:
-        'away_form': 'Deplasman takım formu',
-        'power_difference': 'Güç indeksi farkı',
-        'goals_ratio': 'Gol oranı (Ev / Deplasman)',
+        # H2H
+        'h2h_win_ratio': 'Ev sahibinin geçmiş maçlardaki galibiyet oranı',
+        'h2h_goal_difference': 'Geçmiş maçlardaki gol farkı',
+        
+        # VALUE-BASED
+        'value_difference': 'Takım değer farkı (Ev - Deplasman)',
+        'value_ratio': 'Takım değer oranı (Ev / Deplasman)',
+        
+        # ÖZEL DURUMLAR
+        'isDerby': 'Derbi maçı olup olmadığı'
     }
     return descriptions.get(feature_name, 'Bilinmeyen feature')
 
@@ -331,7 +351,7 @@ def maybe_team_value_features(df_players, team):
     return feats
 
 def predict_calculate_cumulative_stats(df_form, home_team, away_team):
-    """✅ TAHMİN İÇİN CUMULATIVE İSTATİSTİKLERİ HESAPLA"""
+    """✅ REALISTIC CUMULATIVE İSTATİSTİKLERİ HESAPLA"""
     home_norm = normalize_name(home_team)
     away_norm = normalize_name(away_team)
     
@@ -411,11 +431,11 @@ def predict_calculate_cumulative_stats(df_form, home_team, away_team):
     return home_stats, away_stats
 
 def predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative):
-    """✅ PRODUCTION FEATURE ENGINEERING"""
+    """✅ REALISTIC FEATURE ENGINEERING (Eğitimle uyumlu)"""
     enhanced_row = row.copy()
     
     try:
-        # 1. CUMULATIVE DEĞERLERİ EKLE (EN KRİTİK KISIM)
+        # 1. CUMULATIVE DEĞERLERİ EKLE
         enhanced_row.update({
             'home_ppg_cumulative': home_cumulative['ppg_cumulative'],
             'away_ppg_cumulative': away_cumulative['ppg_cumulative'],
@@ -423,33 +443,28 @@ def predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative):
             'away_gpg_cumulative': away_cumulative['gpg_cumulative'],
             'home_gapg_cumulative': home_cumulative['gapg_cumulative'],
             'away_gapg_cumulative': away_cumulative['gapg_cumulative'],
-            'home_goal_diff_cumulative': home_cumulative['goal_diff_cumulative'],
-            'away_goal_diff_cumulative': away_cumulative['goal_diff_cumulative'],
             'home_form_5games': home_cumulative['form_5games'],
             'away_form_5games': away_cumulative['form_5games']
         })
         
-        # 2. INTERACTION FEATURE'LARI (EN ÖNEMLİ FEATURE)
-        enhanced_row['home_form_ppg_interaction'] = enhanced_row['home_form'] * enhanced_row['home_ppg_cumulative']
-        enhanced_row['away_form_ppg_interaction'] = enhanced_row['away_form'] * enhanced_row['away_ppg_cumulative']
+        # 2. POWER INDEX HESAPLA (Rating'lerden)
+        enhanced_row['home_power_index'] = enhanced_row.get('Home_AvgRating', 65) / 100
+        enhanced_row['away_power_index'] = enhanced_row.get('Away_AvgRating', 65) / 100
         
-        # 3. CUMULATIVE TÜREV ÖZELLİKLER
-        enhanced_row['cumulative_ppg_difference'] = enhanced_row['home_ppg_cumulative'] - enhanced_row['away_ppg_cumulative']
-        enhanced_row['cumulative_ppg_ratio'] = enhanced_row['home_ppg_cumulative'] / (enhanced_row['away_ppg_cumulative'] + 0.1)
-        enhanced_row['cumulative_gpg_difference'] = enhanced_row['home_gpg_cumulative'] - enhanced_row['away_gpg_cumulative']
-        enhanced_row['cumulative_gpg_ratio'] = enhanced_row['home_gpg_cumulative'] / (enhanced_row['away_gpg_cumulative'] + 0.1)
-        enhanced_row['cumulative_goal_diff_difference'] = enhanced_row['home_goal_diff_cumulative'] - enhanced_row['away_goal_diff_cumulative']
+        # 3. EĞİTİMDEKİ TEMEL FARKLAR
+        enhanced_row['power_difference'] = enhanced_row['home_power_index'] - enhanced_row['away_power_index']
+        enhanced_row['form_difference'] = enhanced_row['home_form_5games'] - enhanced_row['away_form_5games']
         
         # 4. VALUE-BASED ÖZELLİKLER
         if all(k in enhanced_row for k in ['home_current_value_eur', 'away_current_value_eur']):
             enhanced_row['value_difference'] = enhanced_row['home_current_value_eur'] - enhanced_row['away_current_value_eur']
             enhanced_row['value_ratio'] = enhanced_row['home_current_value_eur'] / max(enhanced_row['away_current_value_eur'], 1)
         
-        # 5. FORM-BASED ÖZELLİKLER  
-        if all(k in enhanced_row for k in ['home_form', 'away_form']):
-            enhanced_row['form_difference'] = enhanced_row['home_form'] - enhanced_row['away_form']
+        # 5. H2H ÖZELLİKLERİ (Varsayılan değerler)
+        enhanced_row.setdefault('h2h_win_ratio', 0.5)
+        enhanced_row.setdefault('h2h_goal_difference', 0)
         
-        # 6. Varsayılan değerler (eğer veri yoksa)
+        # 6. DİĞER ÖZELLİKLER
         enhanced_row.setdefault('isDerby', enhanced_row.get('IsDerby', 0))
         
     except Exception as e:
@@ -473,7 +488,7 @@ def build_feature_row(
     home_form = compute_team_form_snapshot(df_matches_form, home_team)
     away_form = compute_team_form_snapshot(df_matches_form, away_team)
 
-    # ✅ CUMULATIVE İSTATİSTİKLERİ HESAPLA
+    # ✅ REALISTIC CUMULATIVE İSTATİSTİKLERİ HESAPLA
     home_cumulative, away_cumulative = predict_calculate_cumulative_stats(df_matches_form, home_team, away_team)
 
     # Takım değer özelliklerini al
@@ -497,7 +512,7 @@ def build_feature_row(
         'IsDerby': int(derby_flag(home_team, away_team)),
     }
 
-    # ✅ ENHANCED FEATURE ENGINEERING UYGULA
+    # ✅ REALISTIC FEATURE ENGINEERING UYGULA
     row = predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative)
     
     return row
@@ -582,16 +597,16 @@ def last5_report_pretty(df_form, team_candidate, norm_map, max_lines=5):
     return "\n".join([header] + lines)
 
 # ================== STREAMLIT UYGULAMASI ==================
-st.set_page_config(page_title="Bundesliga Predictor - PRODUCTION", layout="wide")
-st.title("⚽ Bundesliga Tahmin Sistemi - PRODUCTION v2.0")
+st.set_page_config(page_title="Bundesliga Predictor - REALISTIC BALANCE", layout="wide")
+st.title("⚽ Bundesliga Tahmin Sistemi - REALISTIC BALANCE v10.1")
 
 @st.cache_resource
 def load_data():
-    """Verileri yükle"""
+    """Verileri yükle - REALISTIC uyumlu"""
     try:
-        # ✅ MODEL VE FEATURE YOLLARINI GÜNCELLE
-        MODEL_PATH = "models/bundesliga_model_production_latest.pkl"
-        FEATURE_INFO_PATH = "models/feature_info_production.pkl"
+        # ✅ REALISTIC MODEL YOLLARI
+        MODEL_PATH = "models/bundesliga_model_realistic_20251029_183237.pkl"
+        FEATURE_INFO_PATH = "models/feature_info_realistic.pkl"
         
         model = joblib.load(MODEL_PATH)
         feat_info = joblib.load(FEATURE_INFO_PATH)
@@ -599,10 +614,11 @@ def load_data():
         # ✅ FEATURE ORDER'INI MODELDEN AL
         if isinstance(feat_info, dict) and 'important_features' in feat_info:
             features_order = feat_info['important_features']
-            st.sidebar.success(f"✅ Model feature'ları yüklendi: {len(features_order)} özellik")
+            st.sidebar.success(f"✅ REALISTIC Model yüklendi: {len(features_order)} özellik")
         else:
-            features_order = PRODUCTION_FEATURES
-            st.sidebar.warning("⚠ Feature info bulunamadı, PRODUCTION özellikler kullanılıyor")
+            # Fallback feature listesi
+            features_order = REALISTIC_FEATURES
+            st.sidebar.warning("⚠ Feature info bulunamadı, REALISTIC özellikler kullanılıyor")
         
         # Oyuncu verilerini yükle
         df_players = load_player_data(PLAYER_DATA_PATH)
@@ -621,7 +637,7 @@ def load_data():
         # Normalize edilmiş takım haritası oluştur
         norm_map = build_normalized_team_map(team_dict)
         
-        st.sidebar.success(f"✅ PRODUCTION Model yüklendi! {len(features_order)} özellik kullanılacak")
+        st.sidebar.success(f"✅ REALISTIC Model yüklendi! {len(features_order)} özellik kullanılacak")
         return model, features_order, team_dict, df_form, norm_map
         
     except FileNotFoundError as e:
@@ -656,41 +672,39 @@ if "away_subs" not in st.session_state:
 # ---------- SIDEBAR ----------
 st.sidebar.header("ℹ️ Sistem Bilgisi")
 st.sidebar.info("""
-**🏆 PRODUCTION Model v2.0:**
-- ✅ %62.2 test accuracy  
-- ✅ %0.5 underfitting (MÜKEMMEL)
-- ✅ 10/44 optimized feature
-- ✅ Cumulative metrikler AKTİF
-- ✅ Interaction feature'ları AKTİF
-- ✅ Data drift monitoring
+**🏆 REALISTIC BALANCE v10.1:**
+- ✅ %66.4 test accuracy  
+- ✅ %4.7 overfitting gap
+- ✅ %82.9 HomeWin recall
+- ✅ %76.1 AwayWin recall  
+- ✅ %23.1 Draw recall
+- ✅ 12/12 optimized feature
+- ✅ Bundesliga pattern uyumlu
 """)
 
 st.sidebar.header("📊 Model Performansı")
-st.sidebar.metric("Test Doğruluk", "%62.2")
-st.sidebar.metric("Overfitting Gap", "%0.5")
-st.sidebar.metric("Kullanılan Özellikler", "10/44")
+st.sidebar.metric("Test Doğruluk", "%66.4")
+st.sidebar.metric("HomeWin Recall", "%82.9")
+st.sidebar.metric("AwayWin Recall", "%76.1")
+st.sidebar.metric("Kullanılan Özellikler", "12/12")
 
 # ---------- ANA UYGULAMA ----------
 st.header("1️⃣ Takım Seçimi")
 
 # Takım dropdown'ları
-# Bochum ve Holstein Kiel'i hariç tut
-exclude_norm = [normalize_name("vfl bochum"), normalize_name("Holstein Kiel")]
-teams_display = [t for t in norm_map.values() if normalize_name(t) not in exclude_norm]
-
 col1, col2 = st.columns(2)
 with col1:
     home_team_display = st.selectbox(
         "🏠 Ev Sahibi Takım",
-        teams_display,
-        index=teams_display.index("Bayern Munich") if "Bayern Munich" in teams_display else 0,
+        list(norm_map.values()),
+        index=list(norm_map.values()).index("Bayern Munich") if "Bayern Munich" in norm_map.values() else 0,
         key="home_team"
     )
 with col2:
     away_team_display = st.selectbox(
         "✈️ Deplasman Takımı",
-        teams_display,
-        index=teams_display.index("Borussia Dortmund") if "Borussia Dortmund" in teams_display else 1,
+        list(norm_map.values()),
+        index=list(norm_map.values()).index("Borussia Dortmund") if "Borussia Dortmund" in norm_map.values() else 1,
         key="away_team"
     )
 
@@ -852,18 +866,18 @@ if st.session_state.show_squads:
             with col1:
                 st.write(f"**{home_team}**")
                 st.metric("⭐ Takım Rating", f"{row.get('Home_AvgRating', 0):.1f}")
-                st.metric("📈 Form", f"{row.get('home_form', 0)*100:.1f}%")
-                st.metric("⚽ Momentum", row.get('homeTeam_Momentum', 0))
+                st.metric("📈 Form (5 maç)", f"{row.get('home_form_5games', 0)*100:.1f}%")
                 st.metric("📊 PPG Cumulative", f"{row.get('home_ppg_cumulative', 0):.2f}")
+                st.metric("⚽ Gol Ortalaması", f"{row.get('home_gpg_cumulative', 0):.2f}")
                 if row.get('home_current_value_eur', 0) > 0:
                     st.metric("💰 Takım Değeri", f"€{row.get('home_current_value_eur', 0):.0f}")
             
             with col2:
                 st.write(f"**{away_team}**")
                 st.metric("⭐ Takım Rating", f"{row.get('Away_AvgRating', 0):.1f}")
-                st.metric("📈 Form", f"{row.get('away_form', 0)*100:.1f}%")
-                st.metric("⚽ Momentum", row.get('awayTeam_Momentum', 0))
+                st.metric("📈 Form (5 maç)", f"{row.get('away_form_5games', 0)*100:.1f}%")
                 st.metric("📊 PPG Cumulative", f"{row.get('away_ppg_cumulative', 0):.2f}")
+                st.metric("⚽ Gol Ortalaması", f"{row.get('away_gpg_cumulative', 0):.2f}")
                 if row.get('away_current_value_eur', 0) > 0:
                     st.metric("💰 Takım Değeri", f"€{row.get('away_current_value_eur', 0):.0f}")
 
@@ -900,7 +914,7 @@ if st.session_state.show_squads:
                         'Feature': feat,
                         'Değer': f"{row[feat]:.3f}",
                         'Açıklama': get_feature_description(feat),
-                        'Önem': '🏆 TOP 3' if feat in ['away_form_ppg_interaction', 'cumulative_ppg_difference', 'away_gpg_cumulative'] else '📈 HIGH'
+                        'Önem': '🏆 KRİTİK' if feat in ['home_ppg_cumulative', 'away_ppg_cumulative', 'home_form_5games'] else '📈 YÜKSEK'
                     })
             
             if feature_values:
@@ -915,7 +929,7 @@ if st.session_state.show_squads:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: gray; font-size: 14px;'>
-    <p>⚽ Bundesliga Tahmin Sistemi - PRODUCTION v2.0 | Test Accuracy: %62.2</p>
+    <p>⚽ Bundesliga Tahmin Sistemi - REALISTIC BALANCE v10.1 | Test Accuracy: %66.4</p>
     <p>© 2025 Cansel Yardım | All Rights Reserved</p>
     <p>🔒 Licensed under MIT License</p>
 </div>

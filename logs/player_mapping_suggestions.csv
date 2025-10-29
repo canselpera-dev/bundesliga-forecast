@@ -15,11 +15,11 @@ Joshua Kimmich,joshua kimmich,Joshua Kimmich,joshua kimmich,100.0,exact_match,ma
 Tom Bischof,tom bischof,Tom Bischof,tom bischof,100.0,exact_match,matched
 Leon Goretzka,leon goretzka,Leon Goretzka,leon goretzka,100.0,exact_match,matched
 Jamal Musiala,jamal musiala,Jamal Musiala,jamal musiala,100.0,exact_match,matched
+Lennart Karl,lennart karl,Lennart Karl,lennart karl,100.0,exact_match,matched
 Luis Díaz,luis diaz,Luis Díaz,luis diaz,100.0,exact_match,matched
 Serge Gnabry,serge gnabry,Serge Gnabry,serge gnabry,100.0,exact_match,matched
 Wisdom Mike,wisdom mike,Wisdom Mike,wisdom mike,100.0,exact_match,matched
 Michael Olise,michael olise,Michael Olise,michael olise,100.0,exact_match,matched
-Lennart Karl,lennart karl,Lennart Karl,lennart karl,100.0,exact_match,matched
 Harry Kane,harry kane,Harry Kane,harry kane,100.0,exact_match,matched
 Nicolas Jackson,nicolas jackson,Nicolas Jackson,nicolas jackson,100.0,exact_match,matched
 Mark Flekken,mark flekken,Mark Flekken,mark flekken,100.0,exact_match,matched
@@ -50,11 +50,10 @@ Nico Schlotterbeck,nico schlotterbeck,Nico Schlotterbeck,nico schlotterbeck,100.
 Waldemar Anton,waldemar anton,Waldemar Anton,waldemar anton,100.0,exact_match,matched
 Niklas Süle,niklas suele,Niklas Süle,niklas suele,100.0,exact_match,matched
 Aarón Anselmino,aaron anselmino,Aaron Anselmino,aaron anselmino,100.0,exact_match,matched
+Ramy Bensebaini,ramy bensebaini,Ramy Bensebaini,ramy bensebaini,100.0,exact_match,matched
 Emre Can,emre can,Emre Can,emre can,100.0,exact_match,matched
 Filippo Mane,filippo mane,Filippo Mane,filippo mane,100.0,exact_match,matched
-Ramy Bensebaini,ramy bensebaini,Ramy Bensebaini,ramy bensebaini,100.0,exact_match,matched
 Almugera Kabar,almugera kabar,Almugera Kabar,almugera kabar,100.0,exact_match,matched
-Yan Couto,yan couto,Yan Couto,yan couto,100.0,exact_match,matched
 Julian Ryerson,julian ryerson,Julian Ryerson,julian ryerson,100.0,exact_match,matched
 Salih Özcan,salih oezcan,Salih Özcan,salih oezcan,100.0,exact_match,matched
 Felix Nmecha,felix nmecha,Felix Nmecha,felix nmecha,100.0,exact_match,matched
@@ -62,6 +61,7 @@ Jobe Bellingham,jobe bellingham,Jobe Bellingham,jobe bellingham,100.0,exact_matc
 Carney Chukwuemeka,carney chukwuemeka,Carney Chukwuemeka,carney chukwuemeka,100.0,exact_match,matched
 Marcel Sabitzer,marcel sabitzer,Marcel Sabitzer,marcel sabitzer,100.0,exact_match,matched
 Pascal Groß,pascal gross,Pascal Groß,pascal gross,100.0,exact_match,matched
+Yan Couto,yan couto,Yan Couto,yan couto,100.0,exact_match,matched
 Daniel Svensson,daniel svensson,Daniel Svensson,daniel svensson,100.0,exact_match,matched
 Julian Brandt,julian brandt,Julian Brandt,julian brandt,100.0,exact_match,matched
 Julien Duranville,julien duranville,Julien Duranville,julien duranville,100.0,exact_match,matched
@@ -267,6 +267,7 @@ Tim Kleindienst,tim kleindienst,Tim Kleindienst,tim kleindienst,100.0,exact_matc
 Shuto Machino,shuto machino,Shuto Machino,shuto machino,100.0,exact_match,matched
 Haris Tabakovic,haris tabakovic,Haris Tabakovic,haris tabakovic,100.0,exact_match,matched
 Grant-Leon Ranos,grantleon ranos,Grant Ranos,grant ranos,100.0,manual_mapping,matched
+Jan Urbich,jan urbich,Jan Urbich,jan urbich,100.0,exact_match,matched
 Kamil Grabara,kamil grabara,Kamil Grabara,kamil grabara,100.0,exact_match,matched
 Marius Müller,marius mueller,Marius Müller,marius mueller,100.0,exact_match,matched
 Pavao Pervan,pavao pervan,Pavao Pervan,pavao pervan,100.0,exact_match,matched
@@ -532,7 +533,6 @@ Kjell Wätjen,kjell waetjen,,,57.14,fuzzy_partial_ratio,unmatched
 Romario Rösch,romario roesch,,,66.67,fuzzy_partial_ratio,unmatched
 Francis Onyeka,francis onyeka,,,50.0,fuzzy_partial_ratio,unmatched
 Lirim Jashari,lirim jashari,,,58.33,fuzzy_partial_ratio,unmatched
-Alessandro Crimaldi,alessandro crimaldi,,,51.61,fuzzy_token_sort_ratio,unmatched
 Farid Alfa-Ruprecht,farid alfaruprecht,,,50.0,fuzzy_partial_ratio,unmatched
 Michael Obafemi,michael obafemi,,,60.87,fuzzy_partial_ratio,unmatched
 Ibrahim Sissoko,ibrahim sissoko,Ibrahima Sissoko,ibrahima sissoko,96.77,fuzzy_ratio,matched

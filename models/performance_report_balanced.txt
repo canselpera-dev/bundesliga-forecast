@@ -1,0 +1,9 @@
+model_type: LightGBM Balanced
+features_used: 11
+total_features: 53
+max_features_limit: 15
+training_date: 2025-10-29 14:52:03
+draw_optimization: True
+homewin_optimization: True
+enhanced_smote: True
+data_drift_handling: True

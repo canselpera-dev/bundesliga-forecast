@@ -1,0 +1,10 @@
+model_type: LightGBM - Ultimate Production
+features_used: 7
+total_features: 56
+max_features_limit: 10
+training_date: 2025-10-22 21:03:41
+ultimate_draw_optimization: True
+aggressive_data_drift_handling: True
+ultra_strict_feature_selection: True
+strict_regularization: True
+draw_focused_class_weights: True

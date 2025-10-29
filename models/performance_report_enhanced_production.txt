@@ -1,12 +1,10 @@
 model_type: Ensemble (LightGBM + XGBoost)
-features_used: 14
-total_features: 54
-max_features_limit: 14
-training_date: 2025-10-19 22:00:51
-draw_optimization_features: True
-homewin_recall_enhancement: True
-ensemble_architecture: True
-enhanced_smote_balancing: True
-data_drift_compensation: True
-targeted_feature_selection: True
-accuracy_target: 61.47%+
+features_used: 15
+total_features: 53
+max_features_limit: 15
+training_date: 2025-10-22 20:40:20
+enhanced_draw_optimization: True
+data_drift_correction: True
+ensemble_model: True
+calibrated_predictions: True
+enhanced_smote: True
