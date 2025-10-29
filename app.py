@@ -1,4 +1,4 @@
-# app.py - DÜZELTİLMİŞ TAHMİN KODU (HATA GİDERİLMİŞ)
+# app.py - DÜZELTİLMİŞ TAHMİN KODU (EĞİTİMLE TAM UYUMLU)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,19 +25,6 @@ TOP_N_STARTERS = 11
 TOP_N_SUBS = 7
 STARTER_WEIGHT = 0.7
 SUB_WEIGHT = 0.3
-
-# ✅ REALISTIC FEATURE LISTESİ
-REALISTIC_FEATURES = [
-    'home_ppg_cumulative', 'away_ppg_cumulative',
-    'home_gpg_cumulative', 'away_gpg_cumulative',
-    'home_gapg_cumulative', 'away_gapg_cumulative',
-    'home_form_5games', 'away_form_5games',
-    'home_power_index', 'away_power_index', 
-    'power_difference', 'form_difference',
-    'h2h_win_ratio', 'h2h_goal_difference',
-    'value_difference', 'value_ratio',
-    'isDerby'
-]
 
 # ================== YARDIMCI FONKSİYONLAR ==================
 def safe_float(x, default=np.nan):
@@ -68,7 +55,7 @@ def normalize_name(name: str) -> str:
     return s
 
 def get_feature_description(feature_name):
-    """✅ REALISTIC Feature açıklamalarını getir"""
+    """✅ EĞİTİMLE UYUMLU Feature açıklamalarını getir"""
     descriptions = {
         'home_ppg_cumulative': 'Ev sahibi takımın maç başına puan ortalaması (EN ÖNEMLİ)',
         'away_ppg_cumulative': 'Deplasman takımın maç başına puan ortalaması (EN ÖNEMLİ)',
@@ -86,7 +73,18 @@ def get_feature_description(feature_name):
         'h2h_goal_difference': 'Geçmiş maçlardaki gol farkı',
         'value_difference': 'Takım değer farkı (Ev - Deplasman)',
         'value_ratio': 'Takım değer oranı (Ev / Deplasman)',
-        'isDerby': 'Derbi maçı olup olmadığı'
+        'isDerby': 'Derbi maçı olup olmadığı',
+        # YENİ EKLENEN FEATURE'LAR
+        'ppg_difference': 'PPG farkı (Ev - Deplasman)',
+        'gpg_difference': 'Gol ortalaması farkı (Ev - Deplasman)',
+        'total_goals_expected': 'Beklenen toplam gol sayısı',
+        'form_similarity': 'Takım form benzerliği',
+        'strength_ratio': 'Takım güç oranı',
+        'home_advantage': 'Ev sahibi avantajı',
+        'away_risk': 'Deplasman risk faktörü',
+        'draw_potential': 'Beraberlik potansiyeli',
+        'home_form': 'Ev sahibi takım formu',
+        'away_form': 'Deplasman takım formu'
     }
     return descriptions.get(feature_name, 'Bilinmeyen feature')
 
@@ -334,14 +332,13 @@ def maybe_team_value_features(df_players, team):
     return feats
 
 def predict_calculate_cumulative_stats(df_form, home_team, away_team):
-    """✅ REALISTIC CUMULATIVE İSTATİSTİKLERİ HESAPLA"""
+    """✅ CUMULATIVE İSTATİSTİKLERİ HESAPLA"""
     home_norm = normalize_name(home_team)
     away_norm = normalize_name(away_team)
     
     # Normalize edilmiş sütunları oluştur
     if '_HomeNorm' not in df_form.columns:
         df_form = df_form.copy()
-        # 🔥 DÜZELTME: ast -> astype
         df_form['_HomeNorm'] = df_form['HomeTeam'].astype(str).apply(normalize_name)
         df_form['_AwayNorm'] = df_form['AwayTeam'].astype(str).apply(normalize_name)
     
@@ -415,7 +412,7 @@ def predict_calculate_cumulative_stats(df_form, home_team, away_team):
     return home_stats, away_stats
 
 def predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative):
-    """✅ REALISTIC FEATURE ENGINEERING (Eğitimle uyumlu)"""
+    """✅ EĞİTİMLE TAM UYUMLU FEATURE ENGINEERING"""
     enhanced_row = row.copy()
     
     try:
@@ -451,8 +448,55 @@ def predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative):
         # 6. DİĞER ÖZELLİKLER
         enhanced_row.setdefault('isDerby', enhanced_row.get('IsDerby', 0))
         
+        # 7. ✅ EĞİTİM KODUYLA TAM UYUMLU YENİ FEATURE'LAR
+        # PPG difference
+        enhanced_row['ppg_difference'] = enhanced_row['home_ppg_cumulative'] - enhanced_row['away_ppg_cumulative']
+        
+        # GPG difference
+        enhanced_row['gpg_difference'] = enhanced_row['home_gpg_cumulative'] - enhanced_row['away_gpg_cumulative']
+        
+        # Total goals expected
+        enhanced_row['total_goals_expected'] = (enhanced_row['home_gpg_cumulative'] + enhanced_row['away_gpg_cumulative']) / 2
+        
+        # Form similarity
+        enhanced_row['form_similarity'] = 1 - abs(enhanced_row['home_form_5games'] - enhanced_row['away_form_5games'])
+        
+        # Strength ratio
+        min_power = min(enhanced_row['home_power_index'], enhanced_row['away_power_index'])
+        max_power = max(enhanced_row['home_power_index'], enhanced_row['away_power_index'])
+        enhanced_row['strength_ratio'] = min_power / (max_power + 1e-8)
+        
+        # Home advantage
+        enhanced_row['home_advantage'] = (enhanced_row['home_ppg_cumulative'] * 0.6 + 
+                                        enhanced_row['home_form_5games'] * 0.4)
+        
+        # Away risk
+        enhanced_row['away_risk'] = enhanced_row['away_gapg_cumulative'] * (1 - enhanced_row['away_form_5games'])
+        
+        # Draw potential
+        enhanced_row['draw_potential'] = (
+            enhanced_row['form_similarity'] * 0.5 + 
+            (1 - abs(enhanced_row['power_difference'] / 3)) * 0.3 +
+            (1 - abs(enhanced_row['ppg_difference'] / 3)) * 0.2
+        )
+        
+        # Form değerleri (basit form)
+        enhanced_row['home_form'] = enhanced_row.get('home_form_5games', 0.5)
+        enhanced_row['away_form'] = enhanced_row.get('away_form_5games', 0.5)
+        
     except Exception as e:
         st.warning(f"Feature engineering hatası: {e}")
+        # Hata durumunda default değerler
+        enhanced_row.setdefault('ppg_difference', 0.0)
+        enhanced_row.setdefault('gpg_difference', 0.0)
+        enhanced_row.setdefault('total_goals_expected', 2.8)
+        enhanced_row.setdefault('form_similarity', 0.5)
+        enhanced_row.setdefault('strength_ratio', 1.0)
+        enhanced_row.setdefault('home_advantage', 0.5)
+        enhanced_row.setdefault('away_risk', 0.5)
+        enhanced_row.setdefault('draw_potential', 0.3)
+        enhanced_row.setdefault('home_form', 0.5)
+        enhanced_row.setdefault('away_form', 0.5)
     
     return enhanced_row
 
@@ -463,7 +507,7 @@ def build_feature_row(
     away_start_ids, away_sub_ids,
     df_matches_form, df_players
 ):
-    """Model için feature satırı oluştur"""
+    """Model için feature satırı oluştur - EĞİTİMLE UYUMLU"""
     # Takım rating'lerini hesapla
     h_team_rating, h_pos, h11, hbench = compute_team_rating_from_lineup(df_home, home_start_ids, home_sub_ids)
     a_team_rating, a_pos, a11, abench = compute_team_rating_from_lineup(df_away, away_start_ids, away_sub_ids)
@@ -472,7 +516,7 @@ def build_feature_row(
     home_form = compute_team_form_snapshot(df_matches_form, home_team)
     away_form = compute_team_form_snapshot(df_matches_form, away_team)
 
-    # ✅ REALISTIC CUMULATIVE İSTATİSTİKLERİ HESAPLA
+    # ✅ CUMULATIVE İSTATİSTİKLERİ HESAPLA
     home_cumulative, away_cumulative = predict_calculate_cumulative_stats(df_matches_form, home_team, away_team)
 
     # Takım değer özelliklerini al
@@ -496,7 +540,7 @@ def build_feature_row(
         'IsDerby': int(derby_flag(home_team, away_team)),
     }
 
-    # ✅ REALISTIC FEATURE ENGINEERING UYGULA
+    # ✅ EĞİTİMLE TAM UYUMLU FEATURE ENGINEERING UYGULA
     row = predict_enhanced_feature_engineering(row, home_cumulative, away_cumulative)
     
     return row
@@ -586,29 +630,24 @@ st.title("⚽ Bundesliga Tahmin Sistemi - REALISTIC BALANCE v10.1")
 
 @st.cache_resource
 def load_data():
-    """Verileri yükle - REALISTIC uyumlu"""
+    """Verileri yükle - EĞİTİMLE UYUMLU"""
     try:
-        # ✅ REALISTIC MODEL YOLLARI
-        MODEL_PATH = "models/bundesliga_model_realistic_20251029_183237.pkl"
-        FEATURE_INFO_PATH = "models/feature_info_realistic.pkl"
-        
         model = joblib.load(MODEL_PATH)
         feat_info = joblib.load(FEATURE_INFO_PATH)
         
         # ✅ FEATURE ORDER'INI MODELDEN AL
         if isinstance(feat_info, dict) and 'important_features' in feat_info:
             features_order = feat_info['important_features']
-            st.sidebar.success(f"✅ REALISTIC Model yüklendi: {len(features_order)} özellik")
+            st.sidebar.success(f"✅ Model yüklendi: {len(features_order)} özellik")
         else:
-            # Fallback feature listesi
-            features_order = REALISTIC_FEATURES
-            st.sidebar.warning("⚠ Feature info bulunamadı, REALISTIC özellikler kullanılıyor")
+            st.sidebar.error("⚠ Feature info bulunamadı!")
+            return None, None, None, None, None
         
         # Oyuncu verilerini yükle
         df_players = load_player_data(PLAYER_DATA_PATH)
         if df_players.empty:
             st.error("❌ Oyuncu verileri yüklenemedi!")
-            st.stop()
+            return None, None, None, None, None
             
         team_dict = team_players_dict(df_players)
 
@@ -621,24 +660,22 @@ def load_data():
         # Normalize edilmiş takım haritası oluştur
         norm_map = build_normalized_team_map(team_dict)
         
-        st.sidebar.success(f"✅ REALISTIC Model yüklendi! {len(features_order)} özellik kullanılacak")
+        st.sidebar.success(f"✅ Model yüklendi! {len(features_order)} özellik kullanılacak")
         return model, features_order, team_dict, df_form, norm_map
         
     except FileNotFoundError as e:
         st.error(f"❌ Dosya bulunamadı: {e}")
         st.error("Lütfen model dosyalarının doğru konumda olduğundan emin olun.")
         st.error("Önce eğitim kodunu çalıştırarak model dosyalarını oluşturun.")
-        st.stop()
+        return None, None, None, None, None
     except Exception as e:
         st.error(f"❌ Veri yüklenirken hata oluştu: {str(e)}")
-        st.stop()
+        return None, None, None, None, None
 
 # Verileri yükle
-try:
-    model, features_order, team_dict, df_form, norm_map = load_data()
-    teams = list(team_dict.keys())
-except:
-    st.error("Gerekli dosyalar bulunamadı. Lütfen model ve veri dosyalarının doğru konumda olduğundan emin olun.")
+model, features_order, team_dict, df_form, norm_map = load_data()
+
+if model is None:
     st.stop()
 
 # ---------- SESSION STATE ----------
@@ -657,20 +694,13 @@ if "away_subs" not in st.session_state:
 st.sidebar.header("ℹ️ Sistem Bilgisi")
 st.sidebar.info("""
 **🏆 REALISTIC BALANCE v10.1:**
-- ✅ %66.4 test accuracy  
-- ✅ %4.7 overfitting gap
-- ✅ %82.9 HomeWin recall
-- ✅ %76.1 AwayWin recall  
-- ✅ %23.1 Draw recall
-- ✅ 12/12 optimized feature
+- ✅ Eğitimle tam uyumlu feature'lar
+- ✅ Tüm feature'lar otomatik oluşturulur
 - ✅ Bundesliga pattern uyumlu
 """)
 
-st.sidebar.header("📊 Model Performansı")
-st.sidebar.metric("Test Doğruluk", "%66.4")
-st.sidebar.metric("HomeWin Recall", "%82.9")
-st.sidebar.metric("AwayWin Recall", "%76.1")
-st.sidebar.metric("Kullanılan Özellikler", "12/12")
+st.sidebar.header("📊 Model Bilgisi")
+st.sidebar.metric("Kullanılan Özellikler", f"{len(features_order)}")
 
 # ---------- ANA UYGULAMA ----------
 st.header("1️⃣ Takım Seçimi")
@@ -717,19 +747,14 @@ if st.session_state.show_squads:
 
     st.header("2️⃣ Kadro Seçimi")
     
-    # 🔥 KESİN ÇÖZÜM: Oyuncuları A'dan Z'ye sırala
     def get_sorted_player_options(df_squad, exclude_indices=None):
         """Oyuncuları A'dan Z'ye harf sırasına göre sırala"""
         if exclude_indices is None:
             exclude_indices = []
         
-        # Tüm oyuncuları al ve seçili olanları hariç tut
         available_players = df_squad[~df_squad.index.isin(exclude_indices)].copy()
-        
-        # 🔥 KRİTİK DÜZELTME: Player sütununa göre kesin sıralama
         available_players = available_players.sort_values('Player')
         
-        # Sıralanmış index listesi ve display bilgileri
         sorted_indices = available_players.index.tolist()
         display_dict = {}
         
@@ -748,12 +773,9 @@ if st.session_state.show_squads:
     
     with col1:
         st.markdown("**🥅 Başlangıç 11**")
-        
-        # Mevcut seçimleri al
         current_home_starters = st.session_state.home_starters
         current_home_subs = st.session_state.home_subs
         
-        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - A'dan Z'ye sıralı
         available_starters_indices, starters_display_dict = get_sorted_player_options(
             home_squad, exclude_indices=current_home_subs
         )
@@ -766,14 +788,10 @@ if st.session_state.show_squads:
             default=current_home_starters,
             max_selections=TOP_N_STARTERS
         )
-        
-        # Seçimleri session state'e kaydet
         st.session_state.home_starters = home_starters
     
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
-        
-        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - A'dan Z'ye sıralı
         available_subs_indices, subs_display_dict = get_sorted_player_options(
             home_squad, exclude_indices=current_home_starters
         )
@@ -786,16 +804,7 @@ if st.session_state.show_squads:
             default=current_home_subs,
             max_selections=TOP_N_SUBS
         )
-        
-        # Seçimleri session state'e kaydet
         st.session_state.home_subs = home_subs
-
-    # Seçili oyuncu sayılarını göster
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info(f"**Başlangıç 11:** {len(home_starters)}/{TOP_N_STARTERS} oyuncu")
-    with col2:
-        st.info(f"**Yedekler:** {len(home_subs)}/{TOP_N_SUBS} oyuncu")
 
     # Deplasman takım kadrosu
     st.subheader(f"👥 {away_team} Kadrosu")
@@ -804,12 +813,9 @@ if st.session_state.show_squads:
     
     with col1:
         st.markdown("**🥅 Başlangıç 11**")
-        
-        # Mevcut seçimleri al
         current_away_starters = st.session_state.away_starters
         current_away_subs = st.session_state.away_subs
         
-        # Başlangıç için kullanılabilir oyuncular (yedeklerde olmayanlar) - A'dan Z'ye sıralı
         available_starters_indices_away, starters_display_dict_away = get_sorted_player_options(
             away_squad, exclude_indices=current_away_subs
         )
@@ -822,14 +828,10 @@ if st.session_state.show_squads:
             default=current_away_starters,
             max_selections=TOP_N_STARTERS
         )
-        
-        # Seçimleri session state'e kaydet
         st.session_state.away_starters = away_starters
     
     with col2:
         st.markdown("**🔄 Yedek Oyuncular (max 7)**")
-        
-        # Yedekler için kullanılabilir oyuncular (başlangıçta olmayanlar) - A'dan Z'ye sıralı
         available_subs_indices_away, subs_display_dict_away = get_sorted_player_options(
             away_squad, exclude_indices=current_away_starters
         )
@@ -842,40 +844,18 @@ if st.session_state.show_squads:
             default=current_away_subs,
             max_selections=TOP_N_SUBS
         )
-        
-        # Seçimleri session state'e kaydet
         st.session_state.away_subs = away_subs
 
-    # Seçili oyuncu sayılarını göster
-    col1, col2 = st.columns(2)
-    with col1:
-        st.info(f"**Başlangıç 11:** {len(away_starters)}/{TOP_N_STARTERS} oyuncu")
-    with col2:
-        st.info(f"**Yedekler:** {len(away_subs)}/{TOP_N_SUBS} oyuncu")
-
-    # Temizle butonları
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        if st.button("🔄 Ev Kadrosunu Temizle", type="secondary"):
-            st.session_state.home_starters = []
-            st.session_state.home_subs = []
-            st.rerun()
-    with col2:
-        if st.button("🔄 Dep Kadrosunu Temizle", type="secondary"):
-            st.session_state.away_starters = []
-            st.session_state.away_subs = []
-            st.rerun()
-    with col3:
-        if st.button("🎯 Tüm Kadroları Otomatik Doldur", type="primary"):
-            # Otomatik seçim
-            st.session_state.home_starters = select_topn_by_rating(home_squad, TOP_N_STARTERS)
-            home_all_idxs = home_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
-            st.session_state.home_subs = [i for i in home_all_idxs if i not in st.session_state.home_starters][:TOP_N_SUBS]
-            
-            st.session_state.away_starters = select_topn_by_rating(away_squad, TOP_N_STARTERS)
-            away_all_idxs = away_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
-            st.session_state.away_subs = [i for i in away_all_idxs if i not in st.session_state.away_starters][:TOP_N_SUBS]
-            st.rerun()
+    # Otomatik doldur butonu
+    if st.button("🎯 Tüm Kadroları Otomatik Doldur", type="primary"):
+        st.session_state.home_starters = select_topn_by_rating(home_squad, TOP_N_STARTERS)
+        home_all_idxs = home_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
+        st.session_state.home_subs = [i for i in home_all_idxs if i not in st.session_state.home_starters][:TOP_N_SUBS]
+        
+        st.session_state.away_starters = select_topn_by_rating(away_squad, TOP_N_STARTERS)
+        away_all_idxs = away_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
+        st.session_state.away_subs = [i for i in away_all_idxs if i not in st.session_state.away_starters][:TOP_N_SUBS]
+        st.rerun()
 
     st.markdown("---")
 
@@ -884,20 +864,16 @@ if st.session_state.show_squads:
         try:
             # Otomatik seçim yapılması gerekiyorsa
             if not home_starters or len(home_starters) < TOP_N_STARTERS:
-                st.warning(f"⚠ Ev sahibi için yeterli başlangıç oyuncusu seçilmedi. En iyi {TOP_N_STARTERS} oyuncu otomatik seçilecek.")
                 home_starters = select_topn_by_rating(home_squad, TOP_N_STARTERS)
             
             if not home_subs or len(home_subs) < TOP_N_SUBS:
-                st.warning(f"⚠ Ev sahibi için yeterli yedek oyuncu seçilmedi. En iyi {TOP_N_SUBS} yedek oyuncu otomatik seçilecek.")
                 home_all_idxs = home_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
                 home_subs = [i for i in home_all_idxs if i not in home_starters][:TOP_N_SUBS]
             
             if not away_starters or len(away_starters) < TOP_N_STARTERS:
-                st.warning(f"⚠ Deplasman için yeterli başlangıç oyuncusu seçilmedi. En iyi {TOP_N_STARTERS} oyuncu otomatik seçilecek.")
                 away_starters = select_topn_by_rating(away_squad, TOP_N_STARTERS)
             
             if not away_subs or len(away_subs) < TOP_N_SUBS:
-                st.warning(f"⚠ Deplasman için yeterli yedek oyuncu seçilmedi. En iyi {TOP_N_SUBS} yedek oyuncu otomatik seçilecek.")
                 away_all_idxs = away_squad['PlayerRating'].dropna().sort_values(ascending=False).index.tolist()
                 away_subs = [i for i in away_all_idxs if i not in away_starters][:TOP_N_SUBS]
 
@@ -925,7 +901,7 @@ if st.session_state.show_squads:
             # Model için hazırla
             feat_row = {f: row.get(f, 0) for f in features_order}
             X = pd.DataFrame([feat_row])[features_order].copy()
-            X = X.fillna(0)  # NaN değerleri doldur
+            X = X.fillna(0)
 
             # Tahmin yap
             pred = model.predict(X)[0]
@@ -940,9 +916,9 @@ if st.session_state.show_squads:
             # Olasılık metrikleri
             st.subheader("📊 Tahmin Olasılıkları")
             c1, c2, c3 = st.columns(3)
-            c1.metric("🏠 Ev Sahibi Kazanır", f"{probs[1]*100:.1f}%", delta=f"{probs[1]*100-33.3:.1f}%")
-            c2.metric("🤝 Beraberlik", f"{probs[0]*100:.1f}%", delta=f"{probs[0]*100-33.3:.1f}%")
-            c3.metric("✈️ Deplasman Kazanır", f"{probs[2]*100:.1f}%", delta=f"{probs[2]*100-33.3:.1f}%")
+            c1.metric("🏠 Ev Sahibi Kazanır", f"{probs[1]*100:.1f}%")
+            c2.metric("🤝 Beraberlik", f"{probs[0]*100:.1f}%")
+            c3.metric("✈️ Deplasman Kazanır", f"{probs[2]*100:.1f}%")
 
             # Kazanan tahmini
             st.subheader("🏆 Tahmin Sonucu")
@@ -953,53 +929,9 @@ if st.session_state.show_squads:
             else:
                 st.info(f"**🎯 MODEL TAHMİNİ: BERABERLİK** (Güven: {pred_prob*100:.1f}%)")
 
-            # Takım istatistikleri
-            st.subheader("📈 Takım İstatistikleri")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write(f"**{home_team}**")
-                st.metric("⭐ Takım Rating", f"{row.get('Home_AvgRating', 0):.1f}")
-                st.metric("📈 Form (5 maç)", f"{row.get('home_form_5games', 0)*100:.1f}%")
-                st.metric("📊 PPG Cumulative", f"{row.get('home_ppg_cumulative', 0):.2f}")
-                st.metric("⚽ Gol Ortalaması", f"{row.get('home_gpg_cumulative', 0):.2f}")
-                if row.get('home_current_value_eur', 0) > 0:
-                    st.metric("💰 Takım Değeri", f"€{row.get('home_current_value_eur', 0):.0f}")
-            
-            with col2:
-                st.write(f"**{away_team}**")
-                st.metric("⭐ Takım Rating", f"{row.get('Away_AvgRating', 0):.1f}")
-                st.metric("📈 Form (5 maç)", f"{row.get('away_form_5games', 0)*100:.1f}%")
-                st.metric("📊 PPG Cumulative", f"{row.get('away_ppg_cumulative', 0):.2f}")
-                st.metric("⚽ Gol Ortalaması", f"{row.get('away_gpg_cumulative', 0):.2f}")
-                if row.get('away_current_value_eur', 0) > 0:
-                    st.metric("💰 Takım Değeri", f"€{row.get('away_current_value_eur', 0):.0f}")
-
-            # Son 5 maç form durumu
-            st.subheader("📋 Son 5 Maç Formu")
-            
-            home_report = last5_report_pretty(df_form, home_team, norm_map, max_lines=5)
-            away_report = last5_report_pretty(df_form, away_team, norm_map, max_lines=5)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write(f"**{home_team}**")
-                if home_report:
-                    st.text(home_report)
-                else:
-                    st.info("⚠ Son 5 maç verisi bulunamadı")
-            
-            with col2:
-                st.write(f"**{away_team}**")
-                if away_report:
-                    st.text(away_report)
-                else:
-                    st.info("⚠ Son 5 maç verisi bulunamadı")
-
             # Önemli feature'lar
             st.subheader("🔍 Önemli Feature Değerleri")
-            important_features = features_order[:6]  # İlk 6 önemli feature'ı göster
+            important_features = features_order[:8]
             
             feature_values = []
             for feat in important_features:
@@ -1008,7 +940,7 @@ if st.session_state.show_squads:
                         'Feature': feat,
                         'Değer': f"{row[feat]:.3f}",
                         'Açıklama': get_feature_description(feat),
-                        'Önem': '🏆 KRİTİK' if feat in ['home_ppg_cumulative', 'away_ppg_cumulative', 'home_form_5games'] else '📈 YÜKSEK'
+                        'Önem': '🏆 KRİTİK' if feat in ['home_ppg_cumulative', 'away_ppg_cumulative'] else '📈 YÜKSEK'
                     })
             
             if feature_values:
@@ -1023,8 +955,6 @@ if st.session_state.show_squads:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: gray; font-size: 14px;'>
-    <p>⚽ Bundesliga Tahmin Sistemi - REALISTIC BALANCE v10.1 | Test Accuracy: %66.4</p>
-    <p>© 2025 Cansel Yardım | All Rights Reserved</p>
-    <p>🔒 Licensed under MIT License</p>
+    <p>⚽ Bundesliga Tahmin Sistemi - REALISTIC BALANCE v10.1 | Eğitimle Tam Uyumlu</p>
 </div>
 """, unsafe_allow_html=True)
