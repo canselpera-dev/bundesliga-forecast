@@ -1,4 +1,4 @@
-# app.py - DÜZELTİLMİŞ TAHMİN KODU (HARF SIRASI KESİN ÇÖZÜM)
+# app.py - DÜZELTİLMİŞ TAHMİN KODU (HATA GİDERİLMİŞ)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -341,8 +341,9 @@ def predict_calculate_cumulative_stats(df_form, home_team, away_team):
     # Normalize edilmiş sütunları oluştur
     if '_HomeNorm' not in df_form.columns:
         df_form = df_form.copy()
+        # 🔥 DÜZELTME: ast -> astype
         df_form['_HomeNorm'] = df_form['HomeTeam'].astype(str).apply(normalize_name)
-        df_form['_AwayNorm'] = df_form['AwayTeam'].ast(str).apply(normalize_name)
+        df_form['_AwayNorm'] = df_form['AwayTeam'].astype(str).apply(normalize_name)
     
     # Home team istatistikleri
     home_matches = df_form[(df_form['_HomeNorm'] == home_norm) | (df_form['_AwayNorm'] == home_norm)].copy()
@@ -726,7 +727,7 @@ if st.session_state.show_squads:
         available_players = df_squad[~df_squad.index.isin(exclude_indices)].copy()
         
         # 🔥 KRİTİK DÜZELTME: Player sütununa göre kesin sıralama
-        available_players = available_players.sort_values('Player', key=lambda x: x.str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8'))
+        available_players = available_players.sort_values('Player')
         
         # Sıralanmış index listesi ve display bilgileri
         sorted_indices = available_players.index.tolist()
