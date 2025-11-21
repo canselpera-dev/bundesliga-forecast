@@ -13,49 +13,127 @@ import sys
 import io
 import unicodedata
 import re
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
-from sklearn.ensemble import RandomForestRegressor
+import requests
+from webdriver_manager.chrome import ChromeDriverManager
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # ------------------------------
-# 1. Transfermarkt Takım Verilerini Çek
+# 1. GELİŞTİRİLMİŞ Transfermarkt Takım Verilerini Çek
 # ------------------------------
-def get_transfermarkt_data():
+def create_driver():
+    """FBref'te başarılı olan driver yapılandırmasını kullan"""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    )
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=chrome_options
+    )
+    
+    # Selenium'u tespit edilmez yap
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    return driver
+
+def parse_currency_value(value_str):
+    """Transfermarkt para değerlerini parse etme - GELİŞTİRİLMİŞ VERSİYON"""
+    if not value_str or value_str == "-" or value_str == "?":
+        return None
+    
+    # Debug
+    print(f"  Parsing: '{value_str}'")
+    
+    # Temizleme
+    value_str = value_str.replace('€', '').strip()
+    
+    # Binlik ve ondalık ayırıcıları handle et
+    if '.' in value_str and ',' in value_str:
+        # 1.000,00 formatı (Alman formatı)
+        value_str = value_str.replace('.', '').replace(',', '.')
+    elif ',' in value_str:
+        # 1,000.00 formatı (İngiliz formatı) 
+        value_str = value_str.replace(',', '')
+    
+    # Multiplier'ları handle et
+    multiplier = 1
+    if 'bn' in value_str.lower():
+        value_str = value_str.lower().replace('bn', '').strip()
+        multiplier = 1000000000
+    elif 'm' in value_str.lower():
+        value_str = value_str.lower().replace('m', '').strip()
+        multiplier = 1000000
+    elif 'k' in value_str.lower():
+        value_str = value_str.lower().replace('k', '').strip()
+        multiplier = 1000
+    elif 'th.' in value_str.lower():
+        value_str = value_str.lower().replace('th.', '').strip()
+        multiplier = 1000
+    
+    try:
+        value = float(value_str) * multiplier
+        print(f"  Success: {value_str} * {multiplier} = {value}")
+        return value
+    except ValueError as e:
+        print(f"  Error parsing '{value_str}': {e}")
+        return None
+
+def get_transfermarkt_data_improved():
     URL = "https://www.transfermarkt.com/bundesliga/marktwerteverein/wettbewerb/L1"
     
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = create_driver()
     data = []
 
     try:
         print("[ℹ] Transfermarkt sayfasına erişiliyor...")
         driver.get(URL)
+        time.sleep(8)
 
         # Cookie kabul et
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, '//button[contains(., "Accept")] | //button[contains(., "Kabul")] | //button[contains(., "Accept all")]'))
-            ).click()
-            print("[✔] Cookie kabul edildi")
-            time.sleep(2)
-        except:
-            print("[ℹ] Cookie butonu bulunamadı veya tıklanamadı")
+        cookie_selectors = [
+            '//button[contains(., "Accept")]',
+            '//button[contains(., "Kabul")]', 
+            '//button[contains(., "Accept all")]',
+            '//button[contains(., "Alle akzeptieren")]',
+            '//button[contains(@class, "consent")]',
+            '//div[contains(@class, "qc-cmp2")]//button[contains(., "Accept")]',
+            '//button[@id="onetrust-accept-btn-handler"]'
+        ]
+        
+        cookie_accepted = False
+        for selector in cookie_selectors:
+            try:
+                cookie_btn = WebDriverWait(driver, 8).until(
+                    EC.element_to_be_clickable((By.XPATH, selector))
+                )
+                cookie_btn.click()
+                print("[✔] Cookie kabul edildi")
+                cookie_accepted = True
+                time.sleep(3)
+                break
+            except Exception as e:
+                continue
+        
+        if not cookie_accepted:
+            print("[ℹ] Cookie butonu bulunamadı, devam ediliyor...")
 
         # Tablonun yüklenmesini bekle
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "items"))
-        )
-        print("[✔] Tablo yüklendi")
-        time.sleep(5)
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "items"))
+            )
+            print("[✔] Tablo yüklendi")
+        except:
+            print("[ℹ] Tablo yüklenmesi için bekleniyor...")
+            time.sleep(10)
 
         # Sayfa kaynağını al
         soup = BeautifulSoup(driver.page_source, "html.parser")
@@ -68,39 +146,54 @@ def get_transfermarkt_data():
 
         print(f"[ℹ] Tablo bulundu, satırlar işleniyor...")
         
+        # Tablo başlıklarını bul
+        headers = table.find("thead").find_all("th")
+        header_texts = [header.get_text(strip=True) for header in headers]
+        print(f"[ℹ] Sütun başlıkları: {header_texts}")
+        
         # Satırları işle
-        for row in table.select("tbody tr"):
+        rows = table.select("tbody tr")
+        print(f"[ℹ] {len(rows)} satır bulundu")
+        
+        for i, row in enumerate(rows):
             cols = row.find_all("td")
             if len(cols) >= 7:
                 try:
-                    club = cols[1].get_text(strip=True)
+                    # TAKIM İSMİNİ AL - DEĞİŞTİRİLDİ: img alt attribute'ünden al
+                    club = None
+                    img_element = cols[1].find("img")
+                    if img_element and 'alt' in img_element.attrs:
+                        club = img_element['alt']
+                    else:
+                        # Alternatif yöntem
+                        club_element = cols[1].find("a")
+                        if club_element:
+                            club = club_element.get_text(strip=True)
+                        else:
+                            club = cols[1].get_text(strip=True)
+                    
+                    if not club or club == "":
+                        print(f"[❌] {i+1:2d}. satırda takım ismi bulunamadı")
+                        continue
+                    
+                    print(f"\n[{i+1:2d}] Processing: {club}")
+                    
+                    # Piyasa değerlerini al
                     current_value_str = cols[4].get_text(strip=True)
                     previous_value_str = cols[5].get_text(strip=True)
                     pct_change_str = cols[6].get_text(strip=True)
 
-                    def parse_currency_value(value_str):
-                        if not value_str or value_str == "-":
-                            return None
-                        value_str = value_str.replace("€", "").replace(",", "").strip()
-                        if "m" in value_str:
-                            return float(value_str.replace("m", "")) * 1_000_000
-                        elif "k" in value_str:
-                            return float(value_str.replace("k", "")) * 1_000
-                        else:
-                            try:
-                                return float(value_str)
-                            except ValueError:
-                                return None
-
                     current_value = parse_currency_value(current_value_str)
                     previous_value = parse_currency_value(previous_value_str)
-                    pct_change = None
                     
+                    # Yüzde değişimi
+                    pct_change = None
                     if pct_change_str and "%" in pct_change_str:
                         try:
-                            pct_change = float(pct_change_str.replace("%", "").replace("+", "").strip())
-                        except:
-                            pass
+                            pct_change_str_clean = pct_change_str.replace("%", "").replace("+", "").replace(",", ".").strip()
+                            pct_change = float(pct_change_str_clean)
+                        except Exception as e:
+                            print(f"  Pct change parse error: {e}")
 
                     # Yaş bilgisini al
                     age_str = cols[3].get_text(strip=True)
@@ -108,7 +201,7 @@ def get_transfermarkt_data():
                     try:
                         age = float(age_str.replace(",", "."))
                     except:
-                        pass
+                        print(f"  Age parse error: '{age_str}'")
 
                     if club and current_value is not None:
                         data.append({
@@ -120,8 +213,11 @@ def get_transfermarkt_data():
                             "league": "Bundesliga"
                         })
                         print(f"[✔] {club} eklendi: {current_value/1_000_000:.1f}M €")
+                    else:
+                        print(f"[❌] {club} - geçersiz değer: '{current_value_str}'")
+                        
                 except Exception as e:
-                    print(f"[❌] Satır işlenirken hata: {e}")
+                    print(f"[❌] {i+1:2d}. satır işlenirken hata: {e}")
                     continue
                     
     except Exception as e:
@@ -138,52 +234,127 @@ def get_transfermarkt_data():
         df_team_values['absolute_change'] = df_team_values['current_value_eur'] - df_team_values['previous_value_eur']
         df_team_values['log_current_value'] = df_team_values['current_value_eur'].apply(lambda x: round(np.log(x), 2))
         print(f"[✔] {len(df_team_values)} takım verisi başarıyla alındı")
+        
+        # Verileri kontrol et
+        print(f"\n[📊] ALINAN VERİLER:")
+        for _, row in df_team_values.iterrows():
+            print(f"  {row['club']:25} → {row['current_value_eur']/1_000_000:6.1f}M €")
     else:
         print("[❌] Hiç takım verisi alınamadı!")
     
     return df_team_values
 
-# Transfermarkt verilerini al
-df_team_values = get_transfermarkt_data()
-
-# Eğer Transfermarkt'tan veri alınamazsa, manuel veri kullan
-if df_team_values.empty:
-    print("[ℹ] Transfermarkt'tan veri alınamadı, manuel veri kullanılıyor...")
+# ------------------------------
+# 2. ALTERNATİF YÖNTEM: Direct HTML Parsing
+# ------------------------------
+def get_transfermarkt_direct():
+    """Direct requests ile veri çekme - daha basit yöntem"""
+    print("[ℹ] Direct HTML parsing yöntemi deneniyor...")
     
-    # Manuel takım verileri
-    manual_team_data = [
-        {"club": "FC Bayern München", "current_value_eur": 980000000, "previous_value_eur": 950000000, "value_change_pct": 3.2, "squad_avg_age": 26.8},
-        {"club": "Bayer 04 Leverkusen", "current_value_eur": 620000000, "previous_value_eur": 580000000, "value_change_pct": 6.9, "squad_avg_age": 25.2},
-        {"club": "Borussia Dortmund", "current_value_eur": 470000000, "previous_value_eur": 450000000, "value_change_pct": 4.4, "squad_avg_age": 24.9},
-        {"club": "RB Leipzig", "current_value_eur": 520000000, "previous_value_eur": 500000000, "value_change_pct": 4.0, "squad_avg_age": 24.1},
-        {"club": "Eintracht Frankfurt", "current_value_eur": 280000000, "previous_value_eur": 260000000, "value_change_pct": 7.7, "squad_avg_age": 26.3},
-        {"club": "VfB Stuttgart", "current_value_eur": 220000000, "previous_value_eur": 200000000, "value_change_pct": 10.0, "squad_avg_age": 25.7},
-        {"club": "Borussia Mönchengladbach", "current_value_eur": 250000000, "previous_value_eur": 240000000, "value_change_pct": 4.2, "squad_avg_age": 26.0},
-        {"club": "VfL Wolfsburg", "current_value_eur": 230000000, "previous_value_eur": 220000000, "value_change_pct": 4.5, "squad_avg_age": 25.8},
-        {"club": "SC Freiburg", "current_value_eur": 180000000, "previous_value_eur": 170000000, "value_change_pct": 5.9, "squad_avg_age": 26.5},
-        {"club": "1. FSV Mainz 05", "current_value_eur": 120000000, "previous_value_eur": 115000000, "value_change_pct": 4.3, "squad_avg_age": 25.9},
-        {"club": "TSG 1899 Hoffenheim", "current_value_eur": 190000000, "previous_value_eur": 185000000, "value_change_pct": 2.7, "squad_avg_age": 25.3},
-        {"club": "1. FC Union Berlin", "current_value_eur": 150000000, "previous_value_eur": 140000000, "value_change_pct": 7.1, "squad_avg_age": 27.1},
-        {"club": "FC Augsburg", "current_value_eur": 130000000, "previous_value_eur": 125000000, "value_change_pct": 4.0, "squad_avg_age": 26.2},
-        {"club": "Werder Bremen", "current_value_eur": 110000000, "previous_value_eur": 105000000, "value_change_pct": 4.8, "squad_avg_age": 26.4},
-        {"club": "1. FC Köln", "current_value_eur": 100000000, "previous_value_eur": 95000000, "value_change_pct": 5.3, "squad_avg_age": 26.7},
-        {"club": "FC St. Pauli", "current_value_eur": 45000000, "previous_value_eur": 40000000, "value_change_pct": 12.5, "squad_avg_age": 26.9},
-        {"club": "1. FC Heidenheim 1846", "current_value_eur": 40000000, "previous_value_eur": 35000000, "value_change_pct": 14.3, "squad_avg_age": 27.2},
-        {"club": "Hamburger SV", "current_value_eur": 70000000, "previous_value_eur": 65000000, "value_change_pct": 7.7, "squad_avg_age": 26.8}
-    ]
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
     
-    df_team_values = pd.DataFrame(manual_team_data)
-    df_team_values['league'] = "Bundesliga"
-    df_team_values['absolute_change'] = df_team_values['current_value_eur'] - df_team_values['previous_value_eur']
-    df_team_values['log_current_value'] = df_team_values['current_value_eur'].apply(lambda x: round(np.log(x), 2))
-    print("[✔] Manuel takım verileri oluşturuldu")
-
-print(f"\n[📊] Takım Verileri:\n{df_team_values[['club', 'current_value_eur']]}")
+    try:
+        response = requests.get(
+            "https://www.transfermarkt.com/bundesliga/marktwerteverein/wettbewerb/L1", 
+            headers=headers, 
+            timeout=30
+        )
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        table = soup.find('table', {'class': 'items'})
+        
+        if not table:
+            print("[❌] Tablo bulunamadı!")
+            return pd.DataFrame()
+            
+        data = []
+        rows = table.select('tbody tr')
+        
+        for row in rows:
+            cols = row.find_all('td')
+            if len(cols) >= 7:
+                try:
+                    # Takım ismini al - img alt attribute'ünden
+                    club = None
+                    img_element = cols[1].find("img")
+                    if img_element and 'alt' in img_element.attrs:
+                        club = img_element['alt']
+                    else:
+                        club_element = cols[1].find("a")
+                        if club_element:
+                            club = club_element.get_text(strip=True)
+                        else:
+                            club = cols[1].get_text(strip=True)
+                    
+                    current_val = cols[4].get_text(strip=True)
+                    
+                    # Basit parsing
+                    current_value = parse_currency_value(current_val)
+                    
+                    if club and current_value:
+                        data.append({
+                            'club': club,
+                            'current_value_eur': current_value,
+                            'league': 'Bundesliga'
+                        })
+                        print(f"[✔] {club}: {current_value/1_000_000:.1f}M €")
+                except Exception as e:
+                    continue
+                    
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df['log_current_value'] = df['current_value_eur'].apply(lambda x: round(np.log(x), 2))
+            print(f"[✔] Direct method ile {len(df)} takım verisi alındı")
+            return df
+            
+    except Exception as e:
+        print(f"[❌] Direct method hatası: {e}")
+        
+    return pd.DataFrame()
 
 # ------------------------------
-# 2. Bundesliga Final Dataset Verilerini Yükle
+# 3. ANA TRANSFERMARKT VERİ ÇEKME FONKSİYONU
 # ------------------------------
-def load_bundesliga_final_dataset():
+def get_transfermarkt_data():
+    """Ana Transfermarkt veri çekme fonksiyonu"""
+    print("=" * 60)
+    print("TRANSFERMARKT VERİ ÇEKME BAŞLATILDI")
+    print("=" * 60)
+
+    # Önce geliştirilmiş Selenium ile dene
+    print("\n[1/2] Geliştirilmiş Selenium yöntemi deneniyor...")
+    df_selenium = get_transfermarkt_data_improved()
+    
+    if not df_selenium.empty and len(df_selenium) >= 10:
+        print("[✔] Selenium başarılı!")
+        return df_selenium
+    
+    # Selenium başarısız olursa direct method ile dene
+    print("\n[2/2] Direct HTML parsing yöntemi deneniyor...")
+    df_direct = get_transfermarkt_direct()
+    
+    if not df_direct.empty and len(df_direct) >= 10:
+        print("[✔] Direct method başarılı!")
+        return df_direct
+    
+    # Her iki yöntem de başarısız olursa
+    print("\n[❌] Her iki yöntem de başarısız oldu!")
+    print("[ℹ] Lütfen internet bağlantınızı kontrol edin")
+    
+    return pd.DataFrame()
+
+# ------------------------------
+# 4. Bundesliga Final Dataset Verilerini Yükle ve İşle
+# ------------------------------
+def load_and_process_bundesliga_final_dataset():
     """Bundesliga final dataset dosyasını yükler ve işler"""
     try:
         dataset_path = "data/bundesliga_final_dataset.xlsx"
@@ -195,26 +366,44 @@ def load_bundesliga_final_dataset():
         print(f"[📊] Dataset boyutu: {df_final_dataset.shape}")
         print(f"[📋] Sütunlar: {list(df_final_dataset.columns)}")
         
-        print(f"\n[📋] Bundesliga Final Dataset İçeriği:")
-        print(df_final_dataset.head(18))
+        # Takım isimlerini normalize et
+        df_final_dataset['Team_norm'] = df_final_dataset['Team'].apply(improved_normalize_name)
+        df_final_dataset['Team_norm'] = df_final_dataset['Team_norm'].replace(expanded_mapping)
         
-        return df_final_dataset
+        # Sayısal sütunları temizle
+        numeric_columns = ['Goals', 'Goals.1', 'xG', 'xG.1', 'InjuryCount', 'Last5FormPoints']
+        for col in numeric_columns:
+            if col in df_final_dataset.columns:
+                # NaN değerleri 0 ile doldur
+                df_final_dataset[col] = pd.to_numeric(df_final_dataset[col], errors='coerce').fillna(0)
+        
+        # Benzersiz takım verileri oluştur (takım başına ortalama değerler)
+        aggregation_rules = {}
+        for col in df_final_dataset.columns:
+            if col in numeric_columns:
+                aggregation_rules[col] = 'mean'
+            elif col == 'Team':
+                aggregation_rules[col] = 'first'
+        
+        df_final_dataset_aggregated = df_final_dataset.groupby('Team_norm').agg(aggregation_rules).reset_index()
+        
+        print(f"\n[📊] Benzersiz takım verileri oluşturuldu: {len(df_final_dataset_aggregated)} takım")
+        print(df_final_dataset_aggregated.head(18))
+        
+        return df_final_dataset_aggregated
         
     except Exception as e:
         print(f"[❌] Bundesliga final dataset yüklenirken hata: {e}")
         return None
 
-# Bundesliga final dataset'i yükle
-df_bundesliga_final = load_bundesliga_final_dataset()
-
 # ------------------------------
-# 3. Geliştirilmiş Takım İsimi Normalizasyonu
+# 5. Geliştirilmiş Takım İsimi Normalizasyonu
 # ------------------------------
 def improved_normalize_name(name):
     if pd.isna(name):
         return None
     
-    name = name.lower().strip()
+    name = str(name).lower().strip()
     name = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('utf-8')
     
     prefixes = ['fc ', '1. ', 'borussia ', 'sv ', 'tsg ', 'sc ', 'vfl ', 'fsv ', '1.']
@@ -303,50 +492,17 @@ expanded_mapping = {
     
     "hamburger sv": "hamburger sv",
     "hamburg": "hamburger sv",
-    "hsv": "hamburger sv"
+    "hsv": "hamburger sv",
+    
+    "bochum 1848": "bochum 1848",
+    "bochum": "bochum 1848",
+    
+    "darmstadt 98": "darmstadt 98",
+    "darmstadt": "darmstadt 98"
 }
 
-# Transfermarkt verilerini normalize et
-df_team_values['club_norm'] = df_team_values['club'].apply(improved_normalize_name)
-df_team_values['club_norm'] = df_team_values['club_norm'].replace(expanded_mapping)
-
-# Bundesliga final dataset'i normalize et
-if df_bundesliga_final is not None:
-    df_bundesliga_final['Team_norm'] = df_bundesliga_final['Team'].apply(improved_normalize_name)
-    df_bundesliga_final['Team_norm'] = df_bundesliga_final['Team_norm'].replace(expanded_mapping)
-    print(f"\n[🔍] Normalize edilmiş Bundesliga Final Dataset takımları:")
-    print(df_bundesliga_final[['Team', 'Team_norm']].head(18))
-
 # ------------------------------
-# 4. Maç Verisini Yükle
-# ------------------------------
-try:
-    matches_path = "data/bundesliga_matches_2023_2025_final_fe.pkl"
-    df_matches = pd.read_pickle(matches_path)
-    print(f"[✔] Maç verisi yüklendi: {matches_path}, {len(df_matches)} kayıt")
-    
-    print(f"\n[📋] İlk 5 maç:")
-    print(df_matches[['homeTeam.name', 'awayTeam.name', 'utcDate']].head())
-    
-except FileNotFoundError:
-    print(f"[❌] Hata: {matches_path} dosyası bulunamadı!")
-    sys.exit(1)
-except Exception as e:
-    print(f"[❌] Maç verisi yüklenirken hata oluştu: {e}")
-    sys.exit(1)
-
-# Maç verilerini normalize et
-df_matches['home_norm'] = df_matches['homeTeam.name'].apply(improved_normalize_name)
-df_matches['away_norm'] = df_matches['awayTeam.name'].apply(improved_normalize_name)
-df_matches['home_norm'] = df_matches['home_norm'].replace(expanded_mapping)
-df_matches['away_norm'] = df_matches['away_norm'].replace(expanded_mapping)
-
-print(f"\n[🔍] Normalize edilmiş takım isimleri:")
-print("Home teams:", df_matches['home_norm'].unique())
-print("Away teams:", df_matches['away_norm'].unique())
-
-# ------------------------------
-# 5. Geliştirilmiş H2H Feature Engineering
+# 6. Geliştirilmiş H2H Feature Engineering
 # ------------------------------
 def calculate_h2h_features(df):
     print("[ℹ] H2H özellikleri hesaplanıyor...")
@@ -415,10 +571,8 @@ def calculate_h2h_features(df):
     
     return df
 
-df_matches = calculate_h2h_features(df_matches)
-
 # ------------------------------
-# 6. Form Özelliklerini Geliştir
+# 7. Form Özelliklerini Geliştir
 # ------------------------------
 def improve_form_features(df):
     print("[ℹ] Form özellikleri geliştiriliyor...")
@@ -431,10 +585,8 @@ def improve_form_features(df):
     
     return df
 
-df_matches = improve_form_features(df_matches)
-
 # ------------------------------
-# 7. isDerby Özelliği Ekleme
+# 8. isDerby Özelliği Ekleme
 # ------------------------------
 def add_derby_feature(df):
     print("[ℹ] Derby özelliği ekleniyor...")
@@ -469,10 +621,8 @@ def add_derby_feature(df):
     
     return df
 
-df_matches = add_derby_feature(df_matches)
-
 # ------------------------------
-# 8. Geliştirilmiş Veri Birleştirme
+# 9. Geliştirilmiş Veri Birleştirme
 # ------------------------------
 def improved_data_merging(df_matches, df_team_values, df_bundesliga_final):
     print("[ℹ] Geliştirilmiş veri birleştirme işlemi...")
@@ -509,11 +659,8 @@ def improved_data_merging(df_matches, df_team_values, df_bundesliga_final):
 
     return df_final
 
-df_final = improved_data_merging(df_matches, df_team_values, df_bundesliga_final)
-print(f"\n[📊] Birleştirme sonrası veri boyutu: {df_final.shape}")
-
 # ------------------------------
-# 9. Geliştirilmiş NaN Yönetimi
+# 10. Geliştirilmiş NaN Yönetimi
 # ------------------------------
 def improved_nan_management(df_final, df_team_values, df_bundesliga_final):
     print("\n[🔍] NaN Değer Analizi:")
@@ -566,13 +713,8 @@ def improved_nan_management(df_final, df_team_values, df_bundesliga_final):
 
     return df_final
 
-df_final = improved_nan_management(df_final, df_team_values, df_bundesliga_final)
-
-print(f"\n[🔍] Son NaN Durumu:")
-print(df_final.isnull().sum())
-
 # ------------------------------
-# 10. Geliştirilmiş Ek Özellik Mühendisliği
+# 11. Geliştirilmiş Ek Özellik Mühendisliği
 # ------------------------------
 def create_improved_features(df):
     print("[ℹ] Geliştirilmiş ek özellikler oluşturuluyor...")
@@ -602,14 +744,94 @@ def create_improved_features(df):
     df['away_power_index'] = (df['away_log_current_value'] * 0.7) + (df['away_last5_form_points'] * 0.3)
     df['power_difference'] = df['home_power_index'] - df['away_power_index']
     
-    df['performance_ratio'] = df['home_goals'] / df['home_xg'].replace(0, 0.1)
+    if 'home_goals' in df.columns and 'home_xg' in df.columns:
+        df['performance_ratio'] = df['home_goals'] / df['home_xg'].replace(0, 0.1)
     
     return df
 
+# ------------------------------
+# ANA PROGRAM
+# ------------------------------
+
+print("=" * 60)
+print("BUNDESLIGA VERİ HAZIRLAMA SİSTEMİ")
+print("=" * 60)
+
+# Transfermarkt verilerini al (MANUEL VERİ KULLANILMAYACAK)
+df_team_values = get_transfermarkt_data()
+
+if df_team_values.empty:
+    print("\n" + "=" * 60)
+    print("KRİTİK HATA: Transfermarkt'tan veri alınamadı!")
+    print("Lütfen aşağıdakileri kontrol edin:")
+    print("1. İnternet bağlantısı")
+    print("2. Transfermarkt.com erişilebilirliği") 
+    print("3. VPN/Firewall ayarları")
+    print("4. Tarayıcı sürümü uyumluluğu")
+    print("=" * 60)
+    sys.exit(1)
+
+print(f"\n[📊] Transfermarkt Verileri ({len(df_team_values)} takım):")
+for _, row in df_team_values.iterrows():
+    print(f"  {row['club']:25} → {row['current_value_eur']/1_000_000:6.1f}M €")
+
+# Transfermarkt verilerini normalize et
+df_team_values['club_norm'] = df_team_values['club'].apply(improved_normalize_name)
+df_team_values['club_norm'] = df_team_values['club_norm'].replace(expanded_mapping)
+
+# Bundesliga final dataset'i yükle ve işle
+df_bundesliga_final = load_and_process_bundesliga_final_dataset()
+
+# Maç verisini yükle
+try:
+    matches_path = "data/bundesliga_matches_2023_2025_final_fe.pkl"
+    df_matches = pd.read_pickle(matches_path)
+    print(f"[✔] Maç verisi yüklendi: {matches_path}, {len(df_matches)} kayıt")
+    
+    print(f"\n[📋] İlk 5 maç:")
+    print(df_matches[['homeTeam.name', 'awayTeam.name', 'utcDate']].head())
+    
+except FileNotFoundError:
+    print(f"[❌] Hata: {matches_path} dosyası bulunamadı!")
+    sys.exit(1)
+except Exception as e:
+    print(f"[❌] Maç verisi yüklenirken hata oluştu: {e}")
+    sys.exit(1)
+
+# Maç verilerini normalize et
+df_matches['home_norm'] = df_matches['homeTeam.name'].apply(improved_normalize_name)
+df_matches['away_norm'] = df_matches['awayTeam.name'].apply(improved_normalize_name)
+df_matches['home_norm'] = df_matches['home_norm'].replace(expanded_mapping)
+df_matches['away_norm'] = df_matches['away_norm'].replace(expanded_mapping)
+
+print(f"\n[🔍] Normalize edilmiş takım isimleri:")
+print("Home teams:", df_matches['home_norm'].unique())
+print("Away teams:", df_matches['away_norm'].unique())
+
+# H2H özelliklerini hesapla
+df_matches = calculate_h2h_features(df_matches)
+
+# Form özelliklerini geliştir
+df_matches = improve_form_features(df_matches)
+
+# Derby özelliği ekle
+df_matches = add_derby_feature(df_matches)
+
+# Veri birleştirme
+df_final = improved_data_merging(df_matches, df_team_values, df_bundesliga_final)
+print(f"\n[📊] Birleştirme sonrası veri boyutu: {df_final.shape}")
+
+# NaN yönetimi
+df_final = improved_nan_management(df_final, df_team_values, df_bundesliga_final)
+
+print(f"\n[🔍] Son NaN Durumu:")
+print(df_final.isnull().sum())
+
+# Ek özellik mühendisliği
 df_final = create_improved_features(df_final)
 
 # ------------------------------
-# 11. Son Kontroller ve Kaydetme
+# 12. Son Kontroller ve Kaydetme
 # ------------------------------
 print(f"\n[✔] İşlem tamamlandı!")
 print(f"[✔] Toplam kayıt: {len(df_final)}")
@@ -633,7 +855,7 @@ print(f"\n[📊] Tüm Sütunlar ({len(df_final.columns)} adet):")
 for i, col in enumerate(sorted(df_final.columns), 1):
     print(f"{i:2d}. {col}")
 
-# Kaydet - DEĞİŞTİRİLEN KISIM
+# Kaydet
 os.makedirs("data", exist_ok=True)
 output_files = [
     "data/bundesliga_matches_2023_2025_final_fe_team_values_cleaned.pkl",
@@ -654,7 +876,7 @@ for file_path in output_files:
         print(f"[❌] {file_path} kaydedilirken hata: {e}")
 
 # ------------------------------
-# 12. İstatistiksel Özet
+# 13. İstatistiksel Özet
 # ------------------------------
 print(f"\n[📈] İSTATİSTİKSEL ÖZET")
 
@@ -701,3 +923,5 @@ print(f"NaN hücre sayısı: {nan_cells}")
 print(f"Veri kalitesi: {data_quality:.1f}%")
 
 print(f"\n[🎉] Tüm işlemler başarıyla tamamlandı!")
+print(f"[🔥] Tüm veriler gerçek zamanlı olarak Transfermarkt'tan alındı!")
+print(f"[📊] Toplam {len(df_team_values)} takımın güncel piyasa değerleri entegre edildi!")
