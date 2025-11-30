@@ -17,9 +17,9 @@ Leon Goretzka,leon goretzka,Leon Goretzka,leon goretzka,100.0,exact_match,matche
 Jamal Musiala,jamal musiala,Jamal Musiala,jamal musiala,100.0,exact_match,matched
 Lennart Karl,lennart karl,Lennart Karl,lennart karl,100.0,exact_match,matched
 Luis Díaz,luis diaz,Luis Díaz,luis diaz,100.0,exact_match,matched
-Serge Gnabry,serge gnabry,Serge Gnabry,serge gnabry,100.0,exact_match,matched
 Wisdom Mike,wisdom mike,Wisdom Mike,wisdom mike,100.0,exact_match,matched
 Michael Olise,michael olise,Michael Olise,michael olise,100.0,exact_match,matched
+Serge Gnabry,serge gnabry,Serge Gnabry,serge gnabry,100.0,exact_match,matched
 Harry Kane,harry kane,Harry Kane,harry kane,100.0,exact_match,matched
 Nicolas Jackson,nicolas jackson,Nicolas Jackson,nicolas jackson,100.0,exact_match,matched
 Mark Flekken,mark flekken,Mark Flekken,mark flekken,100.0,exact_match,matched
@@ -44,6 +44,7 @@ Nathan Tella,nathan tella,Nathan Tella,nathan tella,100.0,exact_match,matched
 Ernest Poku,ernest poku,Ernest Poku,ernest poku,100.0,exact_match,matched
 Patrik Schick,patrik schick,Patrik Schick,patrik schick,100.0,exact_match,matched
 Christian Kofane,christian kofane,Christian Kofane,christian kofane,100.0,exact_match,matched
+Alejo Sarco,alejo sarco,Alejo Sarco,alejo sarco,100.0,exact_match,matched
 Gregor Kobel,gregor kobel,Gregor Kobel,gregor kobel,100.0,exact_match,matched
 Alexander Meyer,alexander meyer,Alexander Meyer,alexander meyer,100.0,exact_match,matched
 Nico Schlotterbeck,nico schlotterbeck,Nico Schlotterbeck,nico schlotterbeck,100.0,exact_match,matched
@@ -275,7 +276,7 @@ Konstantinos Koulierakis,konstantinos koulierakis,Konstantinos Koulierakis,konst
 Denis Vavro,denis vavro,Denis Vavro,denis vavro,100.0,exact_match,matched
 Moritz Jenz,moritz jenz,Moritz Jenz,moritz jenz,100.0,exact_match,matched
 Jenson Seelt,jenson seelt,Jenson Seelt,jenson seelt,100.0,exact_match,matched
-Joakim Mæhle,joakim maehle,Joakim Mæhle,joakim maehle,100.0,exact_match,matched
+Joakim Maehle,joakim maehle,Joakim Mæhle,joakim maehle,100.0,exact_match,matched
 Aaron Zehnter,aaron zehnter,Aaron Zehnter,aaron zehnter,100.0,exact_match,matched
 Rogério,rogerio,Rogério,rogerio,100.0,exact_match,matched
 Kilian Fischer,kilian fischer,Kilian Fischer,kilian fischer,100.0,exact_match,matched
@@ -462,7 +463,6 @@ Min-jae Kim,minjae kim,Kim Min-jae,kim minjae,100.0,fuzzy_token_sort_ratio,match
 Janis Blaswich,janis blaswich,,,60.0,fuzzy_partial_ratio,unmatched
 Niklas Lomb,niklas lomb,,,57.14,fuzzy_partial_ratio,unmatched
 Equi Fernández,equi fernandez,Ezequiél Fernández,ezequiel fernandez,87.5,fuzzy_ratio,matched
-Alejo Sarco,alejo sarco,,,66.67,fuzzy_partial_ratio,unmatched
 Patrick Drewes,patrick drewes,,,60.0,fuzzy_partial_ratio,unmatched
 Silas Ostrzinski,silas ostrzinski,,,60.0,fuzzy_partial_ratio,unmatched
 Leopold Zingerle,leopold zingerle,,,48.28,fuzzy_partial_ratio,unmatched
@@ -543,6 +543,7 @@ Fayssal Harchaoui,fayssal harchaoui,,,50.0,fuzzy_partial_ratio,unmatched
 Emin Kujovic,emin kujovic,,,55.56,fuzzy_partial_ratio,unmatched
 Malek El Mala,malek el mala,,said el mala,80.0,fuzzy_partial_ratio,manual_review
 Konstantin Schopp,konstantin schopp,,,72.73,fuzzy_partial_ratio,unmatched
+Kacper Potulski,kacper potulski,,,50.0,fuzzy_ratio,unmatched
 Maxim Dal,maxim dal,Maxim Leitsch,maxim leitsch,87.5,fuzzy_partial_ratio,matched
 Kasey Bos,kasey bos,,,58.82,fuzzy_partial_ratio,unmatched
 Niklas Tauer,niklas tauer,,nikolas veratschnig,78.26,fuzzy_partial_ratio,manual_review
