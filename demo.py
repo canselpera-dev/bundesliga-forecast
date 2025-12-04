@@ -1,4 +1,4 @@
-# demo.py - Bundesliga AI Tahmin Sistemi DEMO
+# demo.py - Bundesliga AI Tahmin Sistemi DEMO (GÜVENLİ VERSİYON)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -302,45 +302,41 @@ if predict_button:
         Deneyim ve gençlik dengesi her iki takımda da mevcut.
         """)
     
-    # ================== MODEL ANALİZ DETAYLARI ==================
-    with st.expander("🔍 **Model Analiz Detayları (Teknik)**", expanded=False):
+    # ================== MODEL ANALİZ DETAYLARI (GÜVENLİ VERSİYON) ==================
+    with st.expander("🔍 **AI Model Analizi**", expanded=False):
         st.info("""
-        **Ana Belirleyici Faktörler:**
+        **🤖 AI Değerlendirme Özeti:**
         
-        1. **Takım Rating Farkı** - Oyuncu kalitesi ve takım gücü
-        2. **Form Durumu** - Son 5 maçtaki performans trendi  
-        3. **Ev Sahibi Avantajı** - Bundesliga'da ev sahibi takımın ekstra gücü
-        4. **Yaş Analizi** - Deneyimli vs genç kadro dinamikleri
-        5. **Takım Değeri** - Piyasa değeri ve oyuncu kalitesi korelasyonu
+        Modelimiz bu maçı analiz ederken çoklu faktörleri değerlendirdi:
+        
+        **🎯 Ana Belirleyiciler:**
+        • Takım performansı ve form durumu
+        • Oyuncu kalitesi ve takım rating'i
+        • Ev sahibi avantajı faktörü
+        
+        **📊 Destekleyici Faktörler:**
+        • Takım yaş profili ve deneyim dengesi
+        • Piyasa değeri karşılaştırması
+        • Takım dinamikleri ve momentum
         """)
         
-        # Feature tablosu
-        features_data = {
-            'Faktör': [
-                'Takım Rating Farkı', 
-                'Form Durumu Farkı', 
-                'Ev Sahibi Avantajı', 
-                'Yaş Farkı (Deneyim)', 
-                'Takım Değeri Oranı',
-                'Beraberlik Potansiyeli'
-            ],
-            'Değer': [
-                f"{home_rating - away_rating:+.1f}",
-                f"{(home_form - away_form)*100:+.1f}%",
-                "+12.0%",
-                f"{age_diff:+.1f} yaş",
-                f"{home_value/away_value:.2f}",
-                f"{prob_draw*100:.1f}%"
-            ],
-            'Ağırlık': ['35%', '25%', '15%', '10%', '10%', '5%'],
-            'Etki': ['📈 YÜKSEK', '📈 YÜKSEK', '📊 ORTA', '📊 ORTA', '📊 ORTA', '📈 YÜKSEK']
-        }
+        # GÜVENLİ ANALİZ TABLOSU - Sayısal değerler YOK
+        analysis_points = [
+            {"Aspect": "Form Analizi", "Finding": f"{home_team if home_form > away_form else away_team} daha iyi formda", "Impact": "Yüksek"},
+            {"Aspect": "Rating Karşılaştırması", "Finding": f"{home_team if home_rating > away_rating else away_team} daha yüksek rating", "Impact": "Yüksek"},
+            {"Aspect": "Ev Sahibi Avantajı", "Finding": "Bundesliga'da ev sahibi takıma +%12 avantaj", "Impact": "Orta"},
+            {"Aspect": "Yaş Dinamiği", "Finding": f"{'Deneyim avantajı' if age_diff > 0 else 'Gençlik avantajı'}", "Impact": "Orta"},
+            {"Aspect": "Takım Değeri", "Finding": "Piyasa değeri dengeli", "Impact": "Düşük"},
+            {"Aspect": "Beraberlik Potansiyeli", "Finding": f"%{prob_draw*100:.1f} beraberlik olasılığı", "Impact": "Değişken"}
+        ]
         
-        features_df = pd.DataFrame(features_data)
-        st.dataframe(features_df, use_container_width=True, hide_index=True)
+        analysis_df = pd.DataFrame(analysis_points)
+        st.dataframe(analysis_df, use_container_width=True, hide_index=True)
         
-        st.caption("""
-        *Not: Gerçek ticari versiyonda 18 farklı özellik ve gelişmiş makine öğrenimi algoritmaları kullanılmaktadır.*
+        st.warning("""
+        ⚠️ **Demo Notu:** Bu analiz basitleştirilmiş bir gösterimdir. 
+        Gerçek ticari versiyon 18 farklı faktörü değerlendirir ve gelişmiş 
+        makine öğrenimi algoritmaları kullanır.
         """)
     
     # ================== TİCARİ ÇAĞRI ==================
@@ -353,14 +349,14 @@ if predict_button:
     
     **Tam özellikli ticari versiyonumuz şunları içerir:**
     
-    ✅ **Gerçek zamanlı veri entegrasyonu**  
+    ✅ **Gerçek zamanlı veri entegrasyonu** (FBref + Transfermarkt)  
     ✅ **18 optimize edilmiş özellik** ile gelişmiş makine öğrenimi  
     ✅ **API erişimi** ve özel entegrasyonlar  
     ✅ **Diğer ligler için özelleştirme** (Premier League, La Liga, Serie A)  
     ✅ **Detaylı performans metrikleri** ve backtesting  
     ✅ **Özel trading algoritmaları** entegrasyonu  
     
-    **İletişim:** 📧 **contact@bundesliga-forecast.com**
+    **İletişim:** 📧 **matchanalytics.ai@gmail.comm**
     """)
     
     # Hızlı iletişim formu
@@ -392,7 +388,7 @@ st.markdown("""
     <p style='margin: 0.5rem 0;'>
         © 2025 Bundesliga AI Forecast | Tüm hakları saklıdır | 
         <a href='mailto:contact@bundesliga-forecast.com' style='color: #3B82F6; text-decoration: none;'>
-            contact@bundesliga-forecast.com
+            matchanalytics.ai@gmail.com
         </a>
     </p>
     <p style='margin: 0.5rem 0; font-size: 12px;'>
