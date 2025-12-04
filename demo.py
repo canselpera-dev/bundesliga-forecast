@@ -25,7 +25,7 @@ with st.sidebar:
     Ticari kullanım için lütfen iletişime geçin.
     """)
     
-    st.info("📧 **İletişim:** contact@bundesliga-forecast.com")
+    st.info("📧 **İletişim:** matchanalytics.ai@gmail.com")
     st.markdown("---")
     st.caption("© 2025 Bundesliga AI Forecast - Tüm hakları saklıdır")
 
